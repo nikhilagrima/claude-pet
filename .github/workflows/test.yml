@@ -24,7 +24,7 @@ jobs:
 
       - name: Install system deps (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libcairo2 libcairo2-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y libcairo2 libcairo2-dev pkg-config libegl1 libgl1
 
       - name: Install system deps (macOS)
         if: runner.os == 'macOS'
@@ -44,4 +44,5 @@ jobs:
         shell: bash
         env:
           QT_QPA_PLATFORM: offscreen
+          PYTHONUTF8: "1"   # Windows cp1252 console chokes on ≈/✓ in test output
         run: python -m unittest discover -s tests -v

@@ -23,9 +23,12 @@ def _venv_python() -> str:
 
 
 def _cli_path() -> str:
-    entry = shutil.which("claude-pet")
-    if entry:
-        return entry
+    """The command hooks should use to invoke us.
+
+    Always the quoted `python -m claude_pet` form: sys.executable is the
+    interpreter that provably has this package importable RIGHT NOW.
+    A PATH-resolved `claude-pet` entry point can rot (venv moved, PATH
+    changed, pyenv switched) and is unquoted-fragile with spaces."""
     return f'"{_venv_python()}" -m claude_pet'
 
 

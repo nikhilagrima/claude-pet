@@ -140,7 +140,7 @@ class TokenSavingsBenchmark(unittest.TestCase):
 def print_summary_and_exit():
     from claude_pet import context as ctx
     print("\n" + "=" * 82)
-    print("REAL TOKEN-SAVINGS BENCHMARK  (chars / ≈tokens)")
+    print("REAL TOKEN-SAVINGS BENCHMARK  (chars / ~tokens)")
     print("=" * 82)
     print(f"{'scenario':<15} {'injected':<18} {'naive_min':<18} {'naive_full':<18} {'reread_est':>10}")
     print("-" * 82)

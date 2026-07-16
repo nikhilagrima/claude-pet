@@ -92,9 +92,10 @@ class TwoSessionBenchmark(unittest.TestCase):
             [f"{t['tool_name']} used {t['count']} times" for t in tools]
         )
         # Print the benchmark for the release notes.
+        # ASCII-only prints — Windows cp1252 consoles crash on fancy glyphs.
         print(f"\n--- benchmark ---")
-        print(f"injected block: {len(injected)} chars ≈ {ctx.estimate_tokens(injected)} tokens")
-        print(f"naive block:    {len(naive_block)} chars ≈ {ctx.estimate_tokens(naive_block)} tokens")
+        print(f"injected block: {len(injected)} chars ~ {ctx.estimate_tokens(injected)} tokens")
+        print(f"naive block:    {len(naive_block)} chars ~ {ctx.estimate_tokens(naive_block)} tokens")
         print(f"skill promoted: {promoted[0]['title']} (tier={promoted[0]['tier']})")
         print("--- end benchmark ---\n")
 
