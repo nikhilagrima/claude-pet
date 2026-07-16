@@ -16,6 +16,7 @@ env/
 # PyInstaller
 *.spec.bak
 *.iconset/
+*.icns
 
 # OS
 .DS_Store
@@ -39,3 +40,10 @@ desktop.ini
 
 # Logs
 *.log
+
+# Personal SQLite memory — never commit user data
+*.sqlite
+*.sqlite3
+*.db
+memory.sqlite*
+

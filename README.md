@@ -36,6 +36,19 @@ You always know what's happening — even when you can't see the terminal.
 
 The killer feature: **sound alerts**. When Claude finishes a task, the pet plays **3 short dings**. When Claude is **waiting for your input or permission** — the moment you'd otherwise leave it hanging while you read Slack — the pet plays **2 attention beeps**. Failures get a low thud. You can tab away, grab coffee, work on another screen: your ears tell you the moment Claude needs you back.
 
+### 🧠 Remembers every project you work on
+
+Claude Pet keeps a small **local SQLite database** (`~/.claude/claude-pet/memory.sqlite`) recording every project directory you use Claude Code in — sessions, tool usage, success/error counts, and any free-form notes you jot. The next time you open a Claude Code session in that project, **the pet automatically injects the saved context back into the model** so Claude picks up right where you left off.
+
+```bash
+claude-pet memory                # summary of the current project
+claude-pet memory --all          # every project you've ever used
+claude-pet note "Working on the auth refactor, next step is JWT rotation"
+claude-pet context               # the exact block Claude sees on session start
+```
+
+The database is 100% local, never uploaded, and ignored by git. Nothing personal ever leaves your machine.
+
 <div align="center">
 
 <img src="screenshot.png" width="540" alt="Emotions preview" />
@@ -120,6 +133,10 @@ claude-pet stop               Kill running pet
 claude-pet install-hooks      Add Claude Code hook entries to ~/.claude/settings.json
 claude-pet uninstall-hooks    Remove them again
 claude-pet hook <event>       Internal — invoked by Claude Code hooks
+claude-pet memory             Show saved history for the current project
+claude-pet memory --all       List every remembered project
+claude-pet note <text...>     Attach a note to the current project
+claude-pet context            Print the context block Claude sees on session start
 
 Options:
   --show-in-dock              macOS: show the pet icon in the Dock / Cmd-Tab

@@ -11,6 +11,8 @@ import threading
 import time
 from pathlib import Path
 
+from . import memory
+
 
 def _settings_path() -> Path:
     return Path.home() / ".claude" / "settings.json"
@@ -96,6 +98,46 @@ def cmd_hook(args):
     from . import hook
     sys.argv = ["hook"] + args.hook_args
     return hook.main()
+
+
+def cmd_memory(args):
+    """Show project memory. Default: current project. --all lists everything."""
+    if args.all:
+        rows = memory.list_projects()
+        if not rows:
+            print("[claude-pet] no projects remembered yet.")
+            return 0
+        print(f"{'last seen':<28} {'sessions':>8}  {'tool calls':>10}  path")
+        print("-" * 100)
+        for r in rows:
+            print(f"{r['last_seen']:<28} {r['session_count']:>8}  {r['tool_calls']:>10}  {r['path']}")
+        return 0
+    if args.path:
+        target = args.path
+    else:
+        target = None  # current project
+    if args.json:
+        print(memory.as_json(target))
+    else:
+        print(memory.format_context(target))
+    return 0
+
+
+def cmd_note(args):
+    text = " ".join(args.text).strip()
+    if not text:
+        print("[claude-pet] refusing to save an empty note.", file=sys.stderr)
+        return 1
+    memory.add_note(text)
+    print(f"[claude-pet] noted: {text}")
+    return 0
+
+
+def cmd_context(args):
+    """Print project context in a form suitable for pasting into a new Claude
+    Code session or letting a SessionStart hook inject it into the model."""
+    print(memory.format_context())
+    return 0
 
 
 def cmd_install_hooks(args):
@@ -214,6 +256,22 @@ def main():
     h = sub.add_parser("hook", help="internal: handle a hook event")
     h.add_argument("hook_args", nargs="*")
 
+    mem_p = sub.add_parser(
+        "memory",
+        help="show project memory (default: current project; --all for a list)",
+    )
+    mem_p.add_argument("--all", action="store_true", help="list every remembered project")
+    mem_p.add_argument("--path", help="specific project path to show")
+    mem_p.add_argument("--json", action="store_true", help="raw JSON output")
+
+    note_p = sub.add_parser("note", help="attach a free-form note to the current project")
+    note_p.add_argument("text", nargs="+", help="note text (unquoted words are fine)")
+
+    sub.add_parser(
+        "context",
+        help="print current project's saved context (for pasting into a new session)",
+    )
+
     args = parser.parse_args()
     if args.cmd == "run":
         return cmd_run(args) or 0
@@ -227,6 +285,12 @@ def main():
         return cmd_install_hooks(args)
     if args.cmd == "uninstall-hooks":
         return cmd_uninstall_hooks(args)
+    if args.cmd == "memory":
+        return cmd_memory(args)
+    if args.cmd == "note":
+        return cmd_note(args)
+    if args.cmd == "context":
+        return cmd_context(args)
     return 0
 
 
