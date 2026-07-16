@@ -8,6 +8,8 @@
 
 _Made by [Byteflow.bot](https://byteflow.bot) — free & open source._
 
+**v0.3.0 — now a memory brain** for Claude Code. Remembers every project you code in, injects only what matters back into each new session (≤800 tokens, always), learns skills from repeated patterns, and evolves visually as you level up.
+
 </div>
 
 ---
@@ -36,18 +38,26 @@ You always know what's happening — even when you can't see the terminal.
 
 The killer feature: **sound alerts**. When Claude finishes a task, the pet plays **3 short dings**. When Claude is **waiting for your input or permission** — the moment you'd otherwise leave it hanging while you read Slack — the pet plays **2 attention beeps**. Failures get a low thud. You can tab away, grab coffee, work on another screen: your ears tell you the moment Claude needs you back.
 
-### 🧠 Remembers every project you work on
+### 🧠 v0.3.0 — Memory brain for Claude Code
 
-Claude Pet keeps a small **local SQLite database** (`~/.claude/claude-pet/memory.sqlite`) recording every project directory you use Claude Code in — sessions, tool usage, success/error counts, and any free-form notes you jot. The next time you open a Claude Code session in that project, **the pet automatically injects the saved context back into the model** so Claude picks up right where you left off.
+Claude Pet is no longer just a mascot. It's a **local memory brain**:
+
+- **Graph memory of every project** — decisions, conventions, fixes, gotchas stored in `~/.claude/claude-pet/memory.sqlite` (never bundled, never synced).
+- **Automatic context injection** — SessionStart hook emits a ≤800-token ranked block back to Claude Code (`weight × recency × FTS5 match`), so Claude sees what matters on turn 1 without you copy-pasting anything.
+- **Ingests `.ua/knowledge-graph.json`** (Understand-Anything format) as authoritative when present.
+- **Self-learning skills** — patterns reinforced ≥2× promote themselves to real `SKILL.md` files under `~/.claude/claude-pet/skills/`, with valid frontmatter Claude Code picks up automatically. Tier evolves: 🥚 hatchling → 🐣 apprentice → 🦉 senior → 🦄 ponytail.
+- **Click the pet** → a panel opens with Projects, live Graph, Skills, and Stats (including estimated tokens saved).
+- **Never-cut safety** — the pet's injection always ends with a ruleset that forbids skipping validation, security, or accessibility to save tokens (adopted from the Ponytail agent framework).
 
 ```bash
 claude-pet memory                # summary of the current project
 claude-pet memory --all          # every project you've ever used
 claude-pet note "Working on the auth refactor, next step is JWT rotation"
 claude-pet context               # the exact block Claude sees on session start
+claude-pet context --budget 400  # smaller injection for tighter turn budgets
 ```
 
-The database is 100% local, never uploaded, and ignored by git. Nothing personal ever leaves your machine.
+**Guarantees:** 100% local, no cloud, no embeddings, no vector DB, no new daemon. 11 secret-pattern regexes redact anything sensitive before it touches disk. `.sqlite` files are `.gitignore`d — the package ships fresh empty memory.
 
 <div align="center">
 

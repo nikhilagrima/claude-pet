@@ -51,8 +51,8 @@ if sys.platform == "darwin":
         info_plist={
             "LSUIElement": True,
             "NSHighResolutionCapable": True,
-            "CFBundleShortVersionString": "0.1.0",
-            "CFBundleVersion": "0.1.0",
+            "CFBundleShortVersionString": "0.3.0",
+            "CFBundleVersion": "0.3.0",
             "NSHumanReadableCopyright": "© 2026 Byteflow.bot",
         },
     )

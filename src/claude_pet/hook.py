@@ -7,6 +7,9 @@ import sys
 import requests
 
 from . import memory
+from . import distill
+from . import context as ctx
+from . import skills
 
 PET_URL = "http://localhost:5050/state"
 
@@ -57,11 +60,17 @@ def _remember(event: str, tool: str | None, project_path: str | None) -> None:
         e = event.lower()
         if e == "sessionstart":
             memory.record_session_start(project_path)
+            # Also ingest any Understand-Anything graph shipped with the project.
+            distill.ingest_ua_dir_if_present(project_path or ".")
         elif e in ("pretooluse", "onpretooluse", "onworking"):
             if tool:
                 memory.record_tool_use(tool, project_path)
         elif e in ("stop", "ondone"):
             memory.record_success(project_path)
+            # Distill the just-ended session into graph nodes.
+            distill.distill_session(project_path or ".")
+            # Then promote any nodes that crossed the reinforcement threshold.
+            skills.scan_and_promote(project_path or ".")
         elif e in ("posttooluseFailure".lower(), "onerror", "stopfailure"):
             memory.record_error(project_path)
     except Exception:
@@ -70,8 +79,8 @@ def _remember(event: str, tool: str | None, project_path: str | None) -> None:
 
 def _emit_session_context(project_path: str) -> None:
     """Print JSON that Claude Code's SessionStart hook understands as an
-    `additionalContext` injection. Only emit if this project has real history
-    — no point injecting 'no history yet' on the model's first turn."""
+    `additionalContext` injection. Uses the ≤800-token context builder
+    (Phase 3) so it's ranked, deterministic, and budget-enforced."""
     try:
         summary = memory.project_summary(project_path)
         if not summary.get("known"):
@@ -80,14 +89,11 @@ def _emit_session_context(project_path: str) -> None:
         # Only inject if there's actually meaningful history to share.
         if totals.get("sessions", 0) < 1 and not summary.get("notes"):
             return
-        context = memory.format_context(project_path)
+        block = ctx.build_context(project_path)
         payload = {
             "hookSpecificOutput": {
                 "hookEventName": "SessionStart",
-                "additionalContext": (
-                    "Claude Pet remembered this project. Prior context:\n\n"
-                    f"{context}\n"
-                ),
+                "additionalContext": block,
             }
         }
         print(json.dumps(payload))

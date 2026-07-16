@@ -20,6 +20,7 @@ import requests
 import cairosvg
 
 from .bot_svg import make_svg, make_svg_cached, ANIM_CYCLE
+from . import memory
 
 SIZE = 160
 TICK_MS = 110
@@ -220,6 +221,13 @@ class PetWindow(QWidget):
 
     def _tick(self):
         try:
+            # Look up top tier once per ~5 seconds (~45 frames) to keep DB pressure low.
+            if self.frame_idx % 45 == 0:
+                try:
+                    self._tier = memory.top_tier()
+                except Exception:
+                    self._tier = None
+            tier = getattr(self, "_tier", None)
             if self.current_status == "idle":
                 elapsed = time.time() - self.last_state_change
                 show_clock = (elapsed % 30) < 4 and elapsed > 6
@@ -227,12 +235,12 @@ class PetWindow(QWidget):
                     time_str = datetime.now().strftime("%H:%M")
                     svg = make_svg(
                         "idle", self.frame_idx % ANIM_CYCLE,
-                        time_str=time_str, override_eye="clock",
+                        time_str=time_str, override_eye="clock", tier=tier,
                     )
                 else:
-                    svg = make_svg_cached("idle", self.frame_idx % ANIM_CYCLE)
+                    svg = make_svg("idle", self.frame_idx % ANIM_CYCLE, tier=tier)
             else:
-                svg = make_svg_cached(self.current_status, self.frame_idx % ANIM_CYCLE)
+                svg = make_svg(self.current_status, self.frame_idx % ANIM_CYCLE, tier=tier)
             png = cairosvg.svg2png(
                 bytestring=svg.encode("utf-8"),
                 output_width=SIZE, output_height=SIZE,
@@ -276,9 +284,29 @@ class PetWindow(QWidget):
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
             if self.drag_distance < 4:
+                # Short click: open the memory panel + a curious reaction.
                 self.poke("curious")
+                self._toggle_panel()
             self.drag_pos = None
             self.drag_start = None
+
+    def _toggle_panel(self):
+        """Open or close the memory panel. Lazy import so headless installs
+        (no display) never need to load the panel module."""
+        panel = getattr(self, "_panel", None)
+        if panel is not None and panel.isVisible():
+            panel.close()
+            return
+        try:
+            from .panel import MemoryPanel
+            if panel is None:
+                panel = MemoryPanel(self)
+                self._panel = panel
+            panel._refresh_all()
+            panel.show()
+            panel.raise_()
+        except Exception as e:
+            print(f"[pet] panel unavailable: {e}")
 
     def _poll_loop(self):
         while True:

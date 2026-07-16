@@ -135,8 +135,22 @@ def cmd_note(args):
 
 def cmd_context(args):
     """Print project context in a form suitable for pasting into a new Claude
-    Code session or letting a SessionStart hook inject it into the model."""
-    print(memory.format_context())
+    Code session or letting a SessionStart hook inject it into the model.
+
+    Uses the ranked ≤N-token builder from Phase 3."""
+    from . import context as ctx
+    budget = args.budget if hasattr(args, "budget") and args.budget else ctx.DEFAULT_TOKENS
+    block = ctx.build_context(token_budget=budget)
+    if args.json:
+        import json as _json
+        print(_json.dumps({
+            "project": memory.current_project(),
+            "budget_tokens": budget,
+            "actual_tokens": ctx.estimate_tokens(block),
+            "context": block,
+        }, indent=2))
+    else:
+        print(block)
     return 0
 
 
@@ -267,10 +281,14 @@ def main():
     note_p = sub.add_parser("note", help="attach a free-form note to the current project")
     note_p.add_argument("text", nargs="+", help="note text (unquoted words are fine)")
 
-    sub.add_parser(
+    ctx_p = sub.add_parser(
         "context",
         help="print current project's saved context (for pasting into a new session)",
     )
+    ctx_p.add_argument("--budget", type=int, default=None,
+                       help="token budget (default 800; chars≈budget×4)")
+    ctx_p.add_argument("--json", action="store_true",
+                       help="wrap output as JSON with token counts")
 
     args = parser.parse_args()
     if args.cmd == "run":
