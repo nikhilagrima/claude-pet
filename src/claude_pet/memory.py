@@ -478,6 +478,23 @@ def top_nodes(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='nodes_fts'"
         ).fetchone())
 
+        # Collect FTS-matched node ids up front (if a query was supplied).
+        # We can't LEFT-JOIN an FTS5 virtual table with a MATCH inside the ON
+        # clause reliably — do the FTS lookup separately and use it as a
+        # score bonus in-python.
+        fts_hits: set[int] = set()
+        if query and has_fts:
+            try:
+                fts_hits = {
+                    r[0] for r in conn.execute(
+                        "SELECT rowid FROM nodes_fts WHERE nodes_fts MATCH ?",
+                        (query,),
+                    ).fetchall()
+                }
+            except sqlite3.OperationalError:
+                # Malformed FTS query (e.g. reserved chars) — degrade to no boost.
+                fts_hits = set()
+
         params: list = [project_path]
         kind_clause = ""
         if kinds:
@@ -485,27 +502,20 @@ def top_nodes(
             kind_clause = f" AND kind IN ({placeholders})"
             params.extend(kinds)
 
-        if query and has_fts:
-            # Join with FTS to get BM25 boost. bm25() is negative — lower = better.
-            sql = f"""
-            SELECT n.*, bm25(nodes_fts) AS bm
-            FROM nodes n
-            LEFT JOIN nodes_fts f ON f.rowid = n.id AND nodes_fts MATCH ?
-            WHERE n.project_path = ?{kind_clause}
-            ORDER BY n.weight DESC, n.last_seen DESC, n.id DESC
-            LIMIT ?
-            """
-            params = [query] + params + [limit]
-        else:
-            sql = f"""
-            SELECT * FROM nodes
-            WHERE project_path = ?{kind_clause}
-            ORDER BY weight DESC, last_seen DESC, id DESC
-            LIMIT ?
-            """
-            params = params + [limit]
+        # Over-fetch when we have a query so FTS matches can surface even
+        # if they weren't in the raw top-N by weight.
+        fetch = limit * 3 if fts_hits else limit
+        sql = f"""
+        SELECT * FROM nodes
+        WHERE project_path = ?{kind_clause}
+        ORDER BY weight DESC, last_seen DESC, id DESC
+        LIMIT ?
+        """
+        params = params + [fetch]
         rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
 
+    # Score = weight * recency_decay, plus a small additive bonus for FTS hits.
+    FTS_BONUS = 2.0  # ~ two extra reinforcements' worth
     now_dt = datetime.now(timezone.utc)
     for r in rows:
         try:
@@ -513,9 +523,10 @@ def top_nodes(
         except Exception:
             last = now_dt
         hours = max((now_dt - last).total_seconds() / 3600.0, 0.0)
-        r["score"] = r["weight"] * math.exp(-hours / 168.0)
+        base = r["weight"] + (FTS_BONUS if r["id"] in fts_hits else 0.0)
+        r["score"] = base * math.exp(-hours / 168.0)
     rows.sort(key=lambda r: (r["score"], r["last_seen"], r["id"]), reverse=True)
-    return rows
+    return rows[:limit]
 
 
 def upsert_skill(

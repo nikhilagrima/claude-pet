@@ -24,9 +24,19 @@ PROMOTION_THRESHOLD = 2  # reinforcements at which we first create the SKILL.md
 
 
 def _skills_dir() -> Path:
-    root = Path.home() / ".claude" / "claude-pet" / "skills"
+    """Write skills directly into Claude Code's user-scoped skill discovery
+    path — `~/.claude/skills/` — so the generated SKILL.md files are picked
+    up automatically. We namespace every slug with `claude-pet-` so our
+    files never collide with hand-authored skills.
+
+    Previously we wrote to `~/.claude/claude-pet/skills/` which Claude Code
+    does NOT scan — the files existed but were invisible to the model."""
+    root = Path.home() / ".claude" / "skills"
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+_SKILL_PREFIX = "claude-pet-"
 
 
 def _slugify(text: str, max_len: int = 60) -> str:
@@ -86,7 +96,7 @@ def maybe_promote_node(node: dict) -> dict | None:
     project_path = node["project_path"]
     project_slug = _slugify(os.path.basename(project_path.rstrip(os.sep)) or "project")
     key = node["key"]
-    slug = f"{project_slug}-{_slugify(key)}"
+    slug = f"{_SKILL_PREFIX}{project_slug}-{_slugify(key)}"
 
     title = _title_case(slug)
     description = node["value"]
