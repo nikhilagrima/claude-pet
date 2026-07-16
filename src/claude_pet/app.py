@@ -365,6 +365,26 @@ def _show_in_dock_on_macos():
         pass
 
 
+def _set_macos_dock_icon():
+    """Override the Python-launcher icon in the Dock / Cmd-Tab / Force-Quit
+    with our mascot. Uses NSApp.setApplicationIconImage_ via PyObjC."""
+    if sys.platform != "darwin":
+        return
+    try:
+        from AppKit import NSApplication, NSImage
+        assets = os.path.join(os.path.dirname(__file__), "assets")
+        # Prefer the biggest PNG so the Dock's ~128px slot renders sharp.
+        for name in ("icon_1024.png", "icon_512.png", "icon_256.png"):
+            path = os.path.join(assets, name)
+            if os.path.exists(path):
+                img = NSImage.alloc().initWithContentsOfFile_(path)
+                if img is not None:
+                    NSApplication.sharedApplication().setApplicationIconImage_(img)
+                return
+    except Exception:
+        pass
+
+
 def _load_app_icon() -> QIcon:
     here = os.path.dirname(__file__)
     assets = os.path.join(here, "assets")
@@ -386,6 +406,8 @@ def main(show_in_dock: bool = False):
     app.setApplicationName("Claude Pet")
     app.setApplicationDisplayName("Claude Pet")
     app.setWindowIcon(_load_app_icon())
+    # Override the Python launcher icon in Dock / Cmd-Tab / Force-Quit
+    _set_macos_dock_icon()
     pet = PetWindow()
     pet.setWindowIcon(_load_app_icon())
     pet.show()
