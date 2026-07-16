@@ -123,6 +123,20 @@ def cmd_memory(args):
     return 0
 
 
+def cmd_forget(args):
+    """Delete every memory row for a project (CLI counterpart of the UI's
+    'Delete selected project from memory' button)."""
+    target = args.path or memory.current_project()
+    counts = memory.delete_project(target)
+    total = sum(v for k, v in counts.items())
+    if total == 0:
+        print(f"[claude-pet] no memory found for {target}")
+        return 0
+    parts = ", ".join(f"{k}={v}" for k, v in counts.items() if v)
+    print(f"[claude-pet] forgot {target} ({parts})")
+    return 0
+
+
 def cmd_note(args):
     text = " ".join(args.text).strip()
     if not text:
@@ -131,6 +145,102 @@ def cmd_note(args):
     memory.add_note(text)
     print(f"[claude-pet] noted: {text}")
     return 0
+
+
+def cmd_doctor(args):
+    """Diagnose common install problems and self-heal where possible.
+
+    Checks:
+      1. Is the Python each hook points to actually executable?
+      2. Does that Python have the `claude_pet` module installed?
+      3. Is the pet-state server responding on :5050?
+      4. Does the pet process exist?
+    Re-runs install-hooks with sys.executable if any hook path is broken."""
+    import subprocess
+
+    settings = _settings_path()
+    ok = True
+    issues: list[str] = []
+
+    print(f"[doctor] settings file: {settings}")
+    if not settings.exists():
+        print("  ✗ settings.json not found — run: claude-pet install-hooks")
+        return 1
+
+    try:
+        data = json.loads(settings.read_text())
+    except Exception as e:
+        print(f"  ✗ settings.json is unparseable: {e}")
+        return 1
+
+    hooks = data.get("hooks", {})
+    if not hooks:
+        print("  ✗ no hooks configured — run: claude-pet install-hooks")
+        return 1
+
+    # Extract every distinct Python path our hooks reference.
+    broken_paths = set()
+    all_pet_paths = set()
+    for event, entries in hooks.items():
+        for entry in entries:
+            for h in entry.get("hooks", []):
+                cmd = h.get("command", "")
+                if "claude_pet" not in cmd and "claude-pet" not in cmd:
+                    continue
+                # Extract quoted path — the first "…" segment.
+                if cmd.startswith('"'):
+                    end = cmd.find('"', 1)
+                    path = cmd[1:end]
+                    all_pet_paths.add(path)
+                    if not shutil.which(path) and not os.path.isfile(path):
+                        broken_paths.add(path)
+
+    if all_pet_paths:
+        print("[doctor] hook binaries referenced:")
+        for p in sorted(all_pet_paths):
+            mark = "✓" if p not in broken_paths else "✗"
+            print(f"  {mark} {p}")
+
+    if broken_paths:
+        ok = False
+        issues.append("broken hook binary paths (see ✗ above)")
+
+    # Is our sys.executable a working claude-pet install?
+    try:
+        subprocess.check_output(
+            [_venv_python(), "-c", "import claude_pet"], stderr=subprocess.STDOUT,
+        )
+        print(f"[doctor] current interpreter has claude-pet: ✓ {_venv_python()}")
+    except Exception as e:
+        ok = False
+        print(f"[doctor] current interpreter can't import claude_pet: ✗ {e}")
+        issues.append("current interpreter is missing the claude_pet package")
+
+    # Is the server responding?
+    try:
+        import urllib.request
+        with urllib.request.urlopen("http://localhost:5050/state", timeout=1) as r:
+            r.read()
+        print("[doctor] pet server on :5050: ✓ responding")
+    except Exception:
+        print("[doctor] pet server on :5050: — not running (start with: claude-pet start)")
+
+    if broken_paths:
+        print()
+        print("[doctor] re-wiring hooks to point at:", _venv_python())
+        # Reinstall using the current interpreter's path.
+        cmd_install_hooks(args)
+        print("[doctor] ✓ hooks re-wired.")
+        ok = True
+
+    if ok:
+        print("[doctor] all clear.")
+        return 0
+    else:
+        print("[doctor] issues remaining:")
+        for i in issues:
+            print(f"  - {i}")
+        return 1
 
 
 def cmd_context(args):
@@ -267,6 +377,7 @@ def main():
     sub.add_parser("stop", help="kill running pet/server")
     sub.add_parser("install-hooks", help="wire Claude Code hooks")
     sub.add_parser("uninstall-hooks", help="remove Claude Code hooks")
+    sub.add_parser("doctor", help="diagnose install + auto-fix broken hook paths")
     h = sub.add_parser("hook", help="internal: handle a hook event")
     h.add_argument("hook_args", nargs="*")
 
@@ -280,6 +391,12 @@ def main():
 
     note_p = sub.add_parser("note", help="attach a free-form note to the current project")
     note_p.add_argument("text", nargs="+", help="note text (unquoted words are fine)")
+
+    forget_p = sub.add_parser(
+        "forget",
+        help="delete every memory row for a project (also available via UI)",
+    )
+    forget_p.add_argument("--path", help="project path to forget (default: current)")
 
     ctx_p = sub.add_parser(
         "context",
@@ -303,12 +420,16 @@ def main():
         return cmd_install_hooks(args)
     if args.cmd == "uninstall-hooks":
         return cmd_uninstall_hooks(args)
+    if args.cmd == "doctor":
+        return cmd_doctor(args)
     if args.cmd == "memory":
         return cmd_memory(args)
     if args.cmd == "note":
         return cmd_note(args)
     if args.cmd == "context":
         return cmd_context(args)
+    if args.cmd == "forget":
+        return cmd_forget(args)
     return 0
 
 

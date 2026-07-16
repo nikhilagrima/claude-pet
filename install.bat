@@ -1,7 +1,10 @@
 @echo off
 :: Double-click on Windows to install Claude Pet.
+:: Venv lives at %USERPROFILE%\.claude-pet-venv\ — never under the source tree.
 setlocal enabledelayedexpansion
-cd /d "%~dp0"
+set SRC_DIR=%~dp0
+set SRC_DIR=%SRC_DIR:~0,-1%
+cd /d "%USERPROFILE%"
 
 cls
 echo =====================================
@@ -20,31 +23,30 @@ if errorlevel 1 (
 for /f "tokens=2" %%v in ('python --version 2^>^&1') do set PYVER=%%v
 echo OK Python !PYVER!
 
-if not exist .venv (
-  echo  -- Creating virtual environment...
-  python -m venv .venv
+set VENV_DIR=%USERPROFILE%\.claude-pet-venv
+if not exist "%VENV_DIR%" (
+  echo  -- Creating virtual environment at %VENV_DIR%...
+  python -m venv "%VENV_DIR%"
 )
-echo OK Virtual environment ready
+echo OK Virtual environment: %VENV_DIR%
 
 echo  -- Installing claude-pet...
-".venv\Scripts\python" -m pip install --upgrade pip --quiet
-".venv\Scripts\python" -m pip install -e . --quiet
+"%VENV_DIR%\Scripts\python" -m pip install --upgrade pip --quiet
+"%VENV_DIR%\Scripts\python" -m pip install -e "%SRC_DIR%" --quiet
 echo OK claude-pet installed
 
 echo  -- Wiring Claude Code hooks...
-".venv\Scripts\claude-pet" install-hooks
+"%VENV_DIR%\Scripts\claude-pet" install-hooks
 
 echo  -- Starting the pet...
-".venv\Scripts\claude-pet" start
+"%VENV_DIR%\Scripts\claude-pet" start
 
 echo.
 echo =====================================
 echo   Installed! The pet is now running.
 echo =====================================
 echo.
-echo   Look at the bottom-right of your screen.
-echo.
-echo   Open Claude Code -- the pet will react automatically
-echo   to every tool call, success, error, and notification.
+echo   Open Claude Code -- the pet will react automatically.
+echo   To diagnose later:  claude-pet doctor
 echo.
 pause

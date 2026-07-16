@@ -1,7 +1,10 @@
 #!/bin/bash
-# Linux installer.
+# Linux installer. Installs the venv to ~/.claude-pet-venv/ so the hooks
+# survive source-tree moves and never depend on the working directory.
 set -e
 cd "$(dirname "$0")"
+SRC_DIR="$(pwd)"
+cd "$HOME"
 
 clear
 echo "═══════════════════════════════════════"
@@ -41,27 +44,29 @@ if $need_cairo; then
 fi
 echo "✓ Cairo available"
 
-if [ ! -d ".venv" ]; then
-  echo "→ Creating virtual environment…"
-  python3 -m venv .venv
+VENV_DIR="$HOME/.claude-pet-venv"
+if [ ! -d "$VENV_DIR" ]; then
+  echo "→ Creating virtual environment at $VENV_DIR…"
+  python3 -m venv "$VENV_DIR"
 fi
+echo "✓ Virtual environment: $VENV_DIR"
 
 echo "→ Installing claude-pet…"
-.venv/bin/pip install --upgrade pip --quiet
-.venv/bin/pip install -e . --quiet
+"$VENV_DIR/bin/pip" install --upgrade pip --quiet
+"$VENV_DIR/bin/pip" install -e "$SRC_DIR" --quiet
 
 echo "→ Wiring Claude Code hooks…"
-.venv/bin/claude-pet install-hooks
+"$VENV_DIR/bin/claude-pet" install-hooks
 
 echo "→ Starting the pet…"
-.venv/bin/claude-pet start
+"$VENV_DIR/bin/claude-pet" start
 
 echo
 echo "═══════════════════════════════════════"
 echo "  ✓ Installed! The pet is now running."
 echo "═══════════════════════════════════════"
 echo
-echo "  Open Claude Code — the pet will react automatically"
-echo "  to every tool call, success, error, and notification."
+echo "  Open Claude Code — the pet will react automatically."
+echo "  To diagnose later:  claude-pet doctor"
 echo
 read -p "Press Enter to close…"

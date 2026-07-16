@@ -343,6 +343,45 @@ def project_summary(project_path: str | None = None) -> dict:
         }
 
 
+def delete_project(project_path: str) -> dict:
+    """Remove every trace of a project from memory. Returns row counts deleted.
+
+    Cascades across every table that references project_path. Idempotent — a
+    second call on the same path returns zeros.
+    """
+    counts = {}
+    with connect() as conn:
+        # Order matters: delete edges/nodes first (nodes has ON DELETE CASCADE
+        # for edges, but explicit is safer). Then dependents, then `projects`
+        # which uses `path` as its PK column instead of `project_path`.
+        for table in ("edges", "nodes", "tool_usage", "notes", "sessions"):
+            cur = conn.execute(
+                f"DELETE FROM {table} WHERE project_path = ?", (project_path,)
+            )
+            counts[table] = cur.rowcount
+        cur = conn.execute("DELETE FROM projects WHERE path = ?", (project_path,))
+        counts["projects"] = cur.rowcount
+        # Also drop any skills whose ONLY source project was this one.
+        skills = conn.execute(
+            "SELECT slug, project_paths FROM skills"
+        ).fetchall()
+        killed_skills = 0
+        for s in skills:
+            paths = set(json.loads(s["project_paths"]))
+            if project_path in paths:
+                paths.discard(project_path)
+                if not paths:
+                    conn.execute("DELETE FROM skills WHERE slug = ?", (s["slug"],))
+                    killed_skills += 1
+                else:
+                    conn.execute(
+                        "UPDATE skills SET project_paths = ? WHERE slug = ?",
+                        (json.dumps(sorted(paths)), s["slug"]),
+                    )
+        counts["skills"] = killed_skills
+    return counts
+
+
 def list_projects(limit: int = 50) -> list[dict]:
     with connect() as conn:
         return [
