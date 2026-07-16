@@ -4,7 +4,7 @@
 
 # Claude Pet
 
-**A tiny transparent desktop mascot that reacts to Claude Code in real time.**
+**Meet Claude's Virtual Pet Companion for Coders.**
 
 _Made by [Byteflow.bot](https://byteflow.bot) — free & open source._
 
