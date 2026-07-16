@@ -95,4 +95,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
-        run: gh release upload "${GITHUB_REF_NAME}" "${{ matrix.artifact }}" --clobber
+        run: |
+          # Create the release if it doesn't exist yet (race-safe across matrix jobs).
+          gh release view "${GITHUB_REF_NAME}" > /dev/null 2>&1 \
+            || gh release create "${GITHUB_REF_NAME}" \
+                 --title "${GITHUB_REF_NAME}" \
+                 --generate-notes \
+            || true   # another matrix job may have won the race
+          gh release upload "${GITHUB_REF_NAME}" "${{ matrix.artifact }}" --clobber
