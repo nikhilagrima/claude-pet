@@ -32,6 +32,10 @@ It's a small robot mascot that floats in the bottom-right corner of your screen 
 
 You always know what's happening — even when you can't see the terminal.
 
+### 🔔 Never miss when Claude needs you
+
+The killer feature: **sound alerts**. When Claude finishes a task, the pet plays **3 short dings**. When Claude is **waiting for your input or permission** — the moment you'd otherwise leave it hanging while you read Slack — the pet plays **2 attention beeps**. Failures get a low thud. You can tab away, grab coffee, work on another screen: your ears tell you the moment Claude needs you back.
+
 <div align="center">
 
 <img src="screenshot.png" width="540" alt="Emotions preview" />

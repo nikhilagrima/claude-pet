@@ -1,0 +1,98 @@
+name: Build binaries
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: Claude-Pet-macOS.zip
+          - os: windows-latest
+            artifact: Claude-Pet-Windows.zip
+          - os: ubuntu-latest
+            artifact: Claude-Pet-Linux.tar.gz
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libcairo2 libcairo2-dev pkg-config
+
+      - name: Install system deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cairo pkg-config
+
+      - name: Install package + PyInstaller
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            pip install -e ".[macos]"
+          else
+            pip install -e .
+          fi
+          pip install pyinstaller
+
+      - name: Generate icon.icns (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          ASSETS="src/claude_pet/assets"
+          ICONSET="$ASSETS/icon.iconset"
+          mkdir -p "$ICONSET"
+          cp "$ASSETS/icon_16.png"   "$ICONSET/icon_16x16.png"
+          cp "$ASSETS/icon_32.png"   "$ICONSET/icon_16x16@2x.png"
+          cp "$ASSETS/icon_32.png"   "$ICONSET/icon_32x32.png"
+          cp "$ASSETS/icon_64.png"   "$ICONSET/icon_32x32@2x.png"
+          cp "$ASSETS/icon_128.png"  "$ICONSET/icon_128x128.png"
+          cp "$ASSETS/icon_256.png"  "$ICONSET/icon_128x128@2x.png"
+          cp "$ASSETS/icon_256.png"  "$ICONSET/icon_256x256.png"
+          cp "$ASSETS/icon_512.png"  "$ICONSET/icon_256x256@2x.png"
+          cp "$ASSETS/icon_512.png"  "$ICONSET/icon_512x512.png"
+          cp "$ASSETS/icon_1024.png" "$ICONSET/icon_512x512@2x.png"
+          iconutil -c icns "$ICONSET" -o "$ASSETS/icon.icns"
+          rm -rf "$ICONSET"
+
+      - name: Build with PyInstaller
+        run: pyinstaller --noconfirm claude_pet.spec
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: cd dist && zip -ry "../${{ matrix.artifact }}" "Claude Pet.app"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist\claude-pet.exe -DestinationPath ${{ matrix.artifact }}
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: tar -czf "${{ matrix.artifact }}" -C dist claude-pet
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh release upload "${GITHUB_REF_NAME}" "${{ matrix.artifact }}" --clobber
