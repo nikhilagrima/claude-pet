@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+.eggs/
+
+# PyInstaller
+*.spec.bak
+*.iconset/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local Claude Code state
+.claude/settings.local.json
+.claude/audit/
+
+# Environment files that could hold secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log

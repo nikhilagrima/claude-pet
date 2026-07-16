@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "claude-pet"
+version = "0.1.0"
+description = "Transparent desktop pet that reacts to Claude Code events with animations and sounds. Made by Byteflow.bot."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Byteflow.bot"}]
+keywords = ["claude", "claude-code", "desktop-pet", "mascot", "anthropic", "byteflow"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+  "PySide6>=6.5",
+  "cairosvg>=2.7",
+  "flask>=2.3",
+  "flask-cors>=4.0",
+  "Pillow>=10.0",
+  "requests>=2.31",
+]
+
+[project.optional-dependencies]
+macos = ["pyobjc-framework-Cocoa>=10.0"]
+
+[project.scripts]
+claude-pet = "claude_pet.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/nikhilagrima/claude-pet"
+Issues = "https://github.com/nikhilagrima/claude-pet/issues"
+Source = "https://github.com/nikhilagrima/claude-pet"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/claude_pet"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/claude_pet/assets" = "claude_pet/assets"
