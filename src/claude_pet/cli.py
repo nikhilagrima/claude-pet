@@ -73,19 +73,21 @@ def cmd_stop(args):
         print("[claude-pet] requested taskkill (may affect other python.exe)")
         return 0
     killed = 0
-    try:
-        result = subprocess.run(
-            ["pgrep", "-f", "claude_pet"],
-            capture_output=True, text=True,
-        )
-        for pid in result.stdout.strip().splitlines():
-            try:
-                os.kill(int(pid), signal.SIGTERM)
-                killed += 1
-            except Exception:
-                pass
-    except FileNotFoundError:
-        pass
+    # Match both hyphen and underscore variants of the process name.
+    for pattern in ("claude-pet run", "claude_pet run", "-m claude_pet"):
+        try:
+            result = subprocess.run(
+                ["pgrep", "-f", pattern],
+                capture_output=True, text=True,
+            )
+            for pid in result.stdout.strip().splitlines():
+                try:
+                    os.kill(int(pid), signal.SIGTERM)
+                    killed += 1
+                except Exception:
+                    pass
+        except FileNotFoundError:
+            pass
     print(f"[claude-pet] killed {killed} processes")
     return 0
 
@@ -176,16 +178,22 @@ def cmd_uninstall_hooks(args):
 
 
 def _is_running():
-    if sys.platform == "win32":
-        return False
+    """True if a pet server is already bound to port 5050.
+
+    Port-check is cross-platform and reliable — pgrep-based checks were
+    fragile because the process name can be 'claude-pet run', 'claude_pet run',
+    'python -m claude_pet run', or a bundled .app path depending on how the
+    pet was launched.
+    """
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(0.3)
     try:
-        r = subprocess.run(
-            ["pgrep", "-f", "claude_pet run"],
-            capture_output=True, text=True,
-        )
-        return bool(r.stdout.strip())
-    except FileNotFoundError:
+        return s.connect_ex(("127.0.0.1", 5050)) == 0
+    except Exception:
         return False
+    finally:
+        s.close()
 
 
 def main():
