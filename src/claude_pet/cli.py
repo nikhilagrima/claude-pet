@@ -75,8 +75,11 @@ def cmd_stop(args):
         print("[claude-pet] requested taskkill (may affect other python.exe)")
         return 0
     killed = 0
-    # Match both hyphen and underscore variants of the process name.
-    for pattern in ("claude-pet run", "claude_pet run", "-m claude_pet"):
+    # Match both hyphen and underscore variants of the long-running pet
+    # process ONLY. Deliberately no bare "-m claude_pet" pattern — that
+    # would also match short-lived `hook` invocations and kill in-flight
+    # event deliveries.
+    for pattern in ("claude-pet run", "claude_pet run", "-m claude_pet run"):
         try:
             result = subprocess.run(
                 ["pgrep", "-f", pattern],
@@ -187,13 +190,19 @@ def cmd_doctor(args):
                 cmd = h.get("command", "")
                 if "claude_pet" not in cmd and "claude-pet" not in cmd:
                     continue
-                # Extract quoted path — the first "…" segment.
+                # Extract the binary path. Two forms exist in the wild:
+                #   "\"/path with spaces/python\" -m claude_pet hook X"  (quoted)
+                #   "/usr/local/bin/claude-pet hook X"                    (bare)
                 if cmd.startswith('"'):
                     end = cmd.find('"', 1)
                     path = cmd[1:end]
-                    all_pet_paths.add(path)
-                    if not shutil.which(path) and not os.path.isfile(path):
-                        broken_paths.add(path)
+                else:
+                    path = cmd.split()[0] if cmd.split() else ""
+                if not path:
+                    continue
+                all_pet_paths.add(path)
+                if not shutil.which(path) and not os.path.isfile(path):
+                    broken_paths.add(path)
 
     if all_pet_paths:
         print("[doctor] hook binaries referenced:")

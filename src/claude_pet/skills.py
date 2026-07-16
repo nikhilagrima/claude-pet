@@ -98,7 +98,10 @@ def maybe_promote_node(node: dict) -> dict | None:
     key = node["key"]
     slug = f"{_SKILL_PREFIX}{project_slug}-{_slugify(key)}"
 
-    title = _title_case(slug)
+    # Human-readable title comes from project + pattern only — the
+    # 'claude-pet-' namespace prefix stays in the slug (dedup/discovery)
+    # but would read as noise in a title.
+    title = _title_case(f"{project_slug}-{_slugify(key)}")
     description = node["value"]
 
     disk_dir = _skills_dir() / slug
