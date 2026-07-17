@@ -930,7 +930,9 @@ class GithubTab(QWidget):
         add_row = QHBoxLayout()
         add_row.setSpacing(6)
         self.add_input = QLineEdit()
-        self.add_input.setPlaceholderText("owner/repo — e.g. facebook/react")
+        self.add_input.setPlaceholderText(
+            "owner/repo   (multiple ok: facebook/react, vercel/next.js torvalds/linux)"
+        )
         self.add_input.returnPressed.connect(self._add_repo)
         add_row.addWidget(self.add_input, 1)
         self.add_btn = QPushButton("+ Watch")
@@ -976,19 +978,45 @@ class GithubTab(QWidget):
 
     # ---- actions ----------------------------------------------------------
     def _add_repo(self):
+        """Add one or many repos from the input box.
+
+        Accepts space- OR comma-separated slugs so paste-lists like
+        "owner/a, owner/b, owner/c" all wire up in one action.
+        """
         from .github_watch import storage
         raw = self.add_input.text().strip()
-        if "/" not in raw:
-            QMessageBox.warning(self, "Bad format",
-                                "Repo must look like  owner/repo")
+        if not raw:
             return
-        owner, _, repo = raw.partition("/")
-        owner, repo = owner.strip(), repo.strip()
-        if not owner or not repo:
+        added, skipped = 0, []
+        seen: set[tuple[str, str]] = set()
+        for tok in raw.replace(",", " ").split():
+            if "/" not in tok:
+                skipped.append(tok)
+                continue
+            owner, _, repo = tok.partition("/")
+            owner, repo = owner.strip(), repo.strip()
+            if not owner or not repo:
+                skipped.append(tok)
+                continue
+            key = (owner, repo)
+            if key in seen:
+                continue
+            seen.add(key)
+            storage.add_watch(owner, repo)
+            added += 1
+        if added == 0 and skipped:
+            QMessageBox.warning(
+                self, "Bad format",
+                "Repos must look like  owner/repo  (space or comma separated for many)."
+            )
             return
-        storage.add_watch(owner, repo)
         self.add_input.clear()
         self.refresh()
+        if skipped:
+            QMessageBox.information(
+                self, "Some entries skipped",
+                f"Added {added}. Skipped (not owner/repo): {', '.join(skipped)}"
+            )
 
     def _poll_now(self):
         """Fire-and-forget: kick the background watcher via a short-lived thread

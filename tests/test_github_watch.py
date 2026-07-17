@@ -416,6 +416,70 @@ class WatcherTests(unittest.TestCase):
         self.assertEqual(recent[0]["reaction"], "none")
 
 
+class BulkCliTests(unittest.TestCase):
+    """The CLI must accept multiple owner/repo slugs in a single call."""
+
+    def setUp(self):
+        self.db_file = _isolated_db()
+        p = mock.patch("claude_pet.memory.db_path", return_value=self.db_file)
+        p.start(); self.addCleanup(p.stop)
+
+    def test_split_repo_args_space_separated(self):
+        from claude_pet.cli import _split_repo_args
+        got = _split_repo_args(["a/b", "c/d", "e/f"])
+        self.assertEqual(got, [("a", "b"), ("c", "d"), ("e", "f")])
+
+    def test_split_repo_args_comma_separated_single_arg(self):
+        from claude_pet.cli import _split_repo_args
+        got = _split_repo_args(["a/b,c/d,e/f"])
+        self.assertEqual(got, [("a", "b"), ("c", "d"), ("e", "f")])
+
+    def test_split_repo_args_mixed_delimiters(self):
+        from claude_pet.cli import _split_repo_args
+        got = _split_repo_args(["a/b, c/d", "e/f"])
+        self.assertEqual(got, [("a", "b"), ("c", "d"), ("e", "f")])
+
+    def test_split_repo_args_deduplicates(self):
+        from claude_pet.cli import _split_repo_args
+        got = _split_repo_args(["a/b", "a/b", "c/d"])
+        self.assertEqual(got, [("a", "b"), ("c", "d")])
+
+    def test_split_repo_args_drops_malformed(self):
+        from claude_pet.cli import _split_repo_args
+        got = _split_repo_args(["a/b", "not-a-slug", "/no-owner", "no-repo/", "c/d"])
+        self.assertEqual(got, [("a", "b"), ("c", "d")])
+
+    def test_cmd_github_watch_many_in_one_call(self):
+        from claude_pet.cli import cmd_github
+        from claude_pet.github_watch import storage
+        # Mimic argparse namespace.
+        ns = mock.Mock(gh_sub="watch",
+                       gh_args=["torvalds/linux", "facebook/react", "vercel/next.js"])
+        rc = cmd_github(ns)
+        self.assertEqual(rc, 0)
+        slugs = {(w["owner"], w["repo"]) for w in storage.list_watches()}
+        self.assertEqual(slugs, {("torvalds", "linux"),
+                                  ("facebook", "react"),
+                                  ("vercel", "next.js")})
+
+    def test_cmd_github_unwatch_many_in_one_call(self):
+        from claude_pet.cli import cmd_github
+        from claude_pet.github_watch import storage
+        for o, r in [("a", "b"), ("c", "d"), ("e", "f")]:
+            storage.add_watch(o, r)
+        ns = mock.Mock(gh_sub="unwatch", gh_args=["a/b", "e/f"])
+        cmd_github(ns)
+        remaining = {(w["owner"], w["repo"]) for w in storage.list_watches()}
+        self.assertEqual(remaining, {("c", "d")})
+
+    def test_cmd_github_watch_is_idempotent_across_bulk_calls(self):
+        from claude_pet.cli import cmd_github
+        from claude_pet.github_watch import storage
+        ns = mock.Mock(gh_sub="watch", gh_args=["a/b", "c/d"])
+        cmd_github(ns); cmd_github(ns)                # second call: same slugs
+        self.assertEqual(len(storage.list_watches()), 2)
+
+
 class ConfigTests(unittest.TestCase):
     def setUp(self):
         self.cfg_root = _isolated_config_root()
