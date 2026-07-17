@@ -229,6 +229,46 @@ class ClassifyTests(unittest.TestCase):
         self.assertIn("commit", c["title"])
         self.assertEqual(c["event_type"], "PushEvent")
 
+    def test_push_with_truncated_payload_still_useful(self):
+        """GitHub's /events truncates the commits array for many repos —
+        `commits: []`, `size: null`, `distinct_size: null`. We must not
+        display "0 new commits" — either use the head SHA or say
+        "New push". Regression: exact real-world payload from
+        nikhilagrima/claude-pet."""
+        from claude_pet.github_watch.classify import classify
+        ev = {
+            "id": "999", "type": "PushEvent",
+            "actor": {"login": "nikhilagrima"},
+            "repo": {"name": "nikhilagrima/claude-pet"},
+            "created_at": "2026-07-17T10:00:00Z",
+            "payload": {
+                "ref": "refs/heads/main",
+                "head": "c5ca76358dabc0000000",
+                "before": "e1117e598f000000000",
+                "size": None, "distinct_size": None, "commits": [],
+            },
+        }
+        c = classify(ev)
+        self.assertIsNotNone(c)
+        # Must NOT say "0 new commits"
+        self.assertNotIn("0 new commit", c["title"])
+        # Must mention the ref and head SHA
+        self.assertIn("main", c["title"])
+        self.assertIn("c5ca763", c["title"])
+        # URL should be the compare view (or commit view fallback)
+        self.assertTrue(c["url"].startswith(
+            "https://github.com/nikhilagrima/claude-pet/compare/"),
+            f"expected compare URL, got {c['url']}")
+
+    def test_push_with_size_field_uses_size(self):
+        """When distinct_size is populated (common on active repos), use it
+        as the count."""
+        from claude_pet.github_watch.classify import classify
+        ev = _push_event("1", n_commits=0)   # empty commits array
+        ev["payload"]["distinct_size"] = 3   # but distinct_size says 3
+        c = classify(ev)
+        self.assertIn("3 new commits", c["title"])
+
     def test_pr_opened_curious(self):
         from claude_pet.github_watch.classify import classify
         c = classify(_pr_event("1", "opened"))
