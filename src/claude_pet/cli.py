@@ -495,6 +495,60 @@ def cmd_github(args):
     return 1
 
 
+def cmd_stats(args):
+    """`claude-pet stats` — show the token-savings derivation transparently.
+
+    So you can see EXACTLY how the number in the HUD gauge is computed and
+    trust it (or catch it if it's wrong).
+    """
+    from . import memory
+    from . import context as _ctx
+    with memory.connect() as conn:
+        n_projects = conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
+        n_sessions = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        n_nodes = conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
+        n_edges = conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
+        per_project = [
+            dict(r) for r in conn.execute(
+                "SELECT path, session_count FROM projects ORDER BY session_count DESC"
+            ).fetchall()
+        ]
+    projects = memory.list_projects(limit=1)
+    per_block_tokens = 0
+    top_path = None
+    if projects:
+        top_path = projects[0]["path"]
+        try:
+            blk = _ctx.build_context(top_path, token_budget=800)
+            per_block_tokens = max(0, len(blk) // 4)
+        except Exception as e:
+            print(f"[warn] context build failed: {e}")
+    sessions_with_memory = sum(max(0, p["session_count"] - 1) for p in per_project)
+    est = sessions_with_memory * per_block_tokens + n_nodes * 40
+
+    print("=== TOKEN SAVINGS — DERIVATION ===\n")
+    print(f"projects    : {n_projects}")
+    print(f"sessions    : {n_sessions}")
+    print(f"nodes       : {n_nodes}   (baseline savings: 40 tok each)")
+    print(f"edges       : {n_edges}")
+    print()
+    print("per-project session counts:")
+    for p in per_project:
+        credited = max(0, p["session_count"] - 1)
+        print(f"  {p['session_count']:>3} sessions   "
+              f"→ credited: {credited:>3}   {p['path']}")
+    print()
+    print(f"sessions that received memory (∑ max(0, count-1)): {sessions_with_memory}")
+    print(f"per-block size for top project ({top_path}): {per_block_tokens} tok")
+    print()
+    print(f"formula: sessions_with_memory * per_block + nodes * 40")
+    print(f"       = {sessions_with_memory} * {per_block_tokens} "
+          f"+ {n_nodes} * 40")
+    print(f"       = {sessions_with_memory * per_block_tokens} + {n_nodes * 40}")
+    print(f"       = {est:,} tokens saved cumulative")
+    return 0
+
+
 def cmd_forget(args):
     """Delete every memory row for a project (CLI counterpart of the UI's
     'Delete selected project from memory' button)."""
@@ -756,6 +810,7 @@ def main():
     sub.add_parser("install-hooks", help="wire Claude Code hooks")
     sub.add_parser("uninstall-hooks", help="remove Claude Code hooks")
     sub.add_parser("doctor", help="diagnose install + auto-fix broken hook paths")
+    sub.add_parser("stats", help="show token-savings derivation (matches HUD gauge)")
 
     update_p = sub.add_parser("update", help="pull latest release from GitHub, reinstall, restart")
     update_p.add_argument("--force", action="store_true",
@@ -845,6 +900,8 @@ def main():
         return cmd_update(args)
     if args.cmd == "github":
         return cmd_github(args)
+    if args.cmd == "stats":
+        return cmd_stats(args)
     return 0
 
 
