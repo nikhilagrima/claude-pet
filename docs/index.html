@@ -3,17 +3,124 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Claude Pet — Virtual Companion for Claude Code</title>
-<meta name="description" content="A transparent desktop mascot that reacts to Claude Code events, remembers every project you code in, learns skills from repeated patterns, and coaches your ergonomics with animated exercises. 100% local. Open source." />
+<title>Claude Pet — Open-Source Desktop Companion for Claude Code</title>
+<meta name="description" content="Free, open-source (MIT) desktop pet that reacts to every Claude Code event, remembers every project you code in, learns reusable skills, and coaches your ergonomics with animated exercises. 100% local. macOS, Windows, Linux." />
+<meta name="keywords" content="claude code, claude pet, desktop pet, claude assistant, coding companion, open source, ai coding, developer wellness, ergonomics, break reminder, python, pyside6, anthropic, byteflow" />
+<meta name="author" content="Byteflow.bot" />
+<meta name="robots" content="index, follow" />
+<link rel="canonical" href="https://nikhilagrima.github.io/claude-pet/" />
 
-<!-- Social preview -->
-<meta property="og:title" content="Claude Pet — Virtual Companion for Claude Code" />
+<!-- Open Graph -->
+<meta property="og:site_name" content="Claude Pet" />
+<meta property="og:title" content="Claude Pet — Open-Source Desktop Companion for Claude Code" />
 <meta property="og:description" content="Reacts to every Claude Code event. Remembers projects. Learns skills. Coaches your ergonomics. 100% local, open source." />
-<meta property="og:image" content="assets/emotions.png" />
+<meta property="og:image" content="https://nikhilagrima.github.io/claude-pet/assets/emotions.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Claude Pet — 9 of the 11 emotions the mascot displays" />
 <meta property="og:type" content="website" />
+<meta property="og:locale" content="en_US" />
+<meta property="og:url" content="https://nikhilagrima.github.io/claude-pet/" />
+
+<!-- Twitter -->
 <meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Claude Pet — Open-Source Desktop Companion for Claude Code" />
+<meta name="twitter:description" content="Reacts to every Claude Code event. Remembers projects. Learns skills. Coaches your ergonomics. 100% local, open source." />
+<meta name="twitter:image" content="https://nikhilagrima.github.io/claude-pet/assets/emotions.png" />
 
 <link rel="icon" type="image/png" href="assets/icon.png" />
+<link rel="apple-touch-icon" href="assets/icon.png" />
+
+<!-- JSON-LD structured data for Google / social crawlers -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "name": "Claude Pet",
+      "alternateName": "claude-pet",
+      "applicationCategory": "DeveloperApplication",
+      "applicationSubCategory": "Desktop Widget",
+      "operatingSystem": "macOS, Windows, Linux",
+      "description": "Open-source desktop pet that reacts to Claude Code events, remembers every project you code in, learns reusable skills, and coaches your ergonomics with animated exercises. 100% local.",
+      "url": "https://nikhilagrima.github.io/claude-pet/",
+      "downloadUrl": "https://github.com/nikhilagrima/claude-pet/releases/latest",
+      "softwareVersion": "0.4.8",
+      "license": "https://opensource.org/licenses/MIT",
+      "isAccessibleForFree": true,
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "author": {
+        "@type": "Organization",
+        "name": "Byteflow.bot",
+        "url": "https://byteflow.bot"
+      },
+      "codeRepository": "https://github.com/nikhilagrima/claude-pet",
+      "programmingLanguage": ["Python", "PySide6", "SQLite"],
+      "keywords": "claude code, claude pet, desktop pet, coding companion, developer wellness, ergonomics, open source",
+      "screenshot": "https://nikhilagrima.github.io/claude-pet/assets/emotions.png"
+    },
+    {
+      "@type": "Organization",
+      "name": "Byteflow.bot",
+      "url": "https://byteflow.bot",
+      "logo": "https://nikhilagrima.github.io/claude-pet/assets/icon.png",
+      "sameAs": [
+        "https://github.com/nikhilagrima/claude-pet"
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is Claude Pet?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Claude Pet is a free, open-source desktop mascot that reacts to Claude Code events in real time. It also remembers every project you code in via a local SQLite graph, learns reusable skills from repeated patterns, and coaches your ergonomics with animated exercises. 100% local — no cloud, no telemetry."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Which operating systems does it support?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "macOS 11+, Windows 10+, and Linux (X11 or Wayland). Same codebase everywhere thanks to PySide6. Pre-built binaries are published to GitHub Releases for all three platforms on every version tag."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is Claude Pet free and open source?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. MIT-licensed. Full source at github.com/nikhilagrima/claude-pet. No paid features, no telemetry, no cloud. Contributions welcome — see the 'Build your own pet' section for how to add new mascots, exercises, or integrations."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How does the memory brain work?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Every Claude Code hook event (PreToolUse, Stop, etc.) is recorded to a local SQLite database at ~/.claude/claude-pet/memory.sqlite. The pet distills recurring patterns into weighted graph nodes and, on each new session, injects a ≤800-token ranked context block via Claude Code's SessionStart hook — so Claude picks up where you left off without re-reading files."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How does the ergonomics coach avoid false alarms?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Timers count only REAL work time from Claude Code hook events. When the pet's existing 3-minute sleep state kicks in (no activity), all break timers pause. A break is only prompted after the configured active-work threshold (20 min for eyes, 30 for neck, etc.) is crossed. Break prompts are also deferred if you're mid-typing."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
 
 <style>
   :root {
@@ -185,8 +292,47 @@
     margin-top: 8px;
   }
 
+  /* -------- floating github star badge -------- */
+  a.star-badge {
+    position: fixed; bottom: 20px; right: 20px;
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 10px 16px; border-radius: 999px;
+    background: var(--bg-card); border: 1px solid var(--cyan);
+    color: var(--text); font-family: var(--mono); font-size: 13px;
+    font-weight: 600; letter-spacing: 0.3px; text-decoration: none;
+    box-shadow: 0 6px 24px rgba(79, 195, 247, 0.35);
+    z-index: 100; opacity: 0; transform: translateY(20px);
+    transition: opacity 0.3s ease, transform 0.3s ease,
+                background 0.15s ease, border-color 0.15s ease;
+  }
+  a.star-badge.visible { opacity: 1; transform: translateY(0); }
+  a.star-badge:hover {
+    background: var(--cyan); color: var(--bg-deep); border-color: var(--cyan-hi);
+  }
+  a.star-badge .star-icon { font-size: 16px; line-height: 1; }
+  a.star-badge .star-count {
+    padding: 2px 8px; border-radius: 999px;
+    background: var(--bg-deep); color: var(--cyan);
+    font-size: 12px; font-weight: 700; min-width: 24px; text-align: center;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  a.star-badge:hover .star-count { background: var(--bg-card); color: var(--cyan); }
+
+  /* -------- contribute section -------- */
+  .contribute-cta {
+    display: flex; gap: 14px; margin-top: 24px; flex-wrap: wrap;
+    justify-content: center;
+  }
+  .contribute-cta .btn { min-width: 180px; justify-content: center; }
+  .code-inline {
+    font-family: var(--mono); background: var(--bg-deep);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 2px 6px; font-size: 12px; color: var(--cyan);
+  }
+
   /* -------- mobile -------- */
   @media (max-width: 600px) {
+    a.star-badge { bottom: 12px; right: 12px; padding: 8px 12px; font-size: 12px; }
     nav { padding: 16px 20px; flex-direction: column; gap: 12px; }
     nav .links a { margin-left: 0; margin-right: 20px; }
     header.hero { padding: 20px 20px 40px; }
@@ -392,6 +538,66 @@ cd $HOME\claude-pet
   </div>
 </section>
 
+<section id="contribute">
+  <h2><span class="marker">◆</span>Build your own pet</h2>
+  <p class="lede">
+    Claude Pet is <b>MIT-licensed and made to be forked</b>. Add a new mascot, a new exercise, a new integration — the extension points are deliberate and tiny. Adding a full new ergonomics exercise, for example, is a 6-line PR: drop an SVG in <span class="code-inline">svgs/</span>, append one row to <span class="code-inline">exercises.py</span>. Adding a new emotion is one entry in the <span class="code-inline">EMOTIONS</span> dict. That's it.
+  </p>
+
+  <div class="features">
+    <div class="feature">
+      <h3>Fork the mascot</h3>
+      <p>The pet is drawn live from SVG in <span class="code-inline">src/claude_pet/bot_svg.py</span>. Change the capsule color, swap the eye shapes, redesign it entirely — it's ~300 lines of pure Python-generated SVG, no assets to redraw.</p>
+    </div>
+    <div class="feature">
+      <h3>Add an exercise</h3>
+      <p>Drop your animated SVG in <span class="code-inline">src/claude_pet/ergonomics/svgs/</span>, then append one <span class="code-inline">Exercise(...)</span> row to <span class="code-inline">exercises.py</span>. The scheduler and overlay pick it up automatically.</p>
+    </div>
+    <div class="feature">
+      <h3>Add an emotion</h3>
+      <p>Every emotion is a one-line entry in <span class="code-inline">EMOTIONS</span> in <span class="code-inline">bot_svg.py</span>: eye kind, color, halo intensity, LED color. Ship a new state via <span class="code-inline">POST /state</span> and the pet reacts.</p>
+    </div>
+    <div class="feature">
+      <h3>Integrate any tool</h3>
+      <p>The pet listens on <span class="code-inline">localhost:5050</span>. Any tool that can <span class="code-inline">POST /state</span> or <span class="code-inline">POST /break</span> can drive it — CI notifications, deploy alerts, PR reviews, whatever you want.</p>
+    </div>
+    <div class="feature">
+      <h3>Refine the memory brain</h3>
+      <p>Ranking, distillation, skill promotion, secret redaction — every heuristic is small, tested, and easy to iterate. See <span class="code-inline">src/claude_pet/memory.py</span> and <span class="code-inline">distill.py</span>.</p>
+    </div>
+    <div class="feature">
+      <h3>Ship a translation / theme</h3>
+      <p>Dashboard strings are colocated in <span class="code-inline">panel.py</span>. The HUD palette lives in one <span class="code-inline">NEON</span> dict — swap it for a synthwave, retro-green, or pastel theme in ~30 minutes.</p>
+    </div>
+  </div>
+
+  <div class="contribute-cta">
+    <a class="btn primary" href="https://github.com/nikhilagrima/claude-pet" target="_blank" rel="noopener">
+      <span>★</span> Star on GitHub
+    </a>
+    <a class="btn" href="https://github.com/nikhilagrima/claude-pet/fork" target="_blank" rel="noopener">
+      Fork the repo
+    </a>
+    <a class="btn" href="https://github.com/nikhilagrima/claude-pet/issues" target="_blank" rel="noopener">
+      Open an issue
+    </a>
+    <a class="btn" href="https://github.com/nikhilagrima/claude-pet/pulls" target="_blank" rel="noopener">
+      Pull requests
+    </a>
+    <a class="btn" href="https://github.com/nikhilagrima/claude-pet/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">
+      Contributing guide
+    </a>
+  </div>
+</section>
+
+<!-- Floating star CTA, appears after ~4s of engagement -->
+<a class="star-badge" href="https://github.com/nikhilagrima/claude-pet" target="_blank" rel="noopener"
+   id="star-badge" aria-label="Star Claude Pet on GitHub">
+  <span class="star-icon">★</span>
+  <span>Star on GitHub</span>
+  <span class="star-count" id="star-count">—</span>
+</a>
+
 <footer>
   Made with 💙 by <a href="https://byteflow.bot" target="_blank" rel="noopener">Byteflow.bot</a> ·
   MIT licensed ·
@@ -403,6 +609,29 @@ cd $HOME\claude-pet
 </footer>
 
 <script>
+  // ---- Floating GitHub star badge: fetch live count, reveal after 4s ----
+  (function () {
+    const badge = document.getElementById('star-badge');
+    const countEl = document.getElementById('star-count');
+    // Fetch current star count. GitHub API is public + CORS-friendly.
+    fetch('https://api.github.com/repos/nikhilagrima/claude-pet',
+          { headers: { 'Accept': 'application/vnd.github+json' } })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && typeof data.stargazers_count === 'number') {
+          const n = data.stargazers_count;
+          countEl.textContent = n >= 1000 ? (n / 1000).toFixed(1) + 'k' : n;
+        }
+      })
+      .catch(() => { /* silent — badge still shows "—" */ });
+    // Reveal after 4s so it doesn't hijack the first paint.
+    setTimeout(() => badge.classList.add('visible'), 4000);
+    // Auto-hide once dismissed via keyboard Escape.
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') badge.classList.remove('visible');
+    });
+  })();
+
   // Copy-to-clipboard on install snippets. Robust extraction: hide the
   // button, read innerText, restore — no fragile string-stripping.
   document.querySelectorAll('button.copy[data-clip]').forEach(btn => {

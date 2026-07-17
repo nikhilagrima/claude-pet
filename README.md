@@ -325,7 +325,9 @@ That's it — no daemon left running, no LaunchAgent, no scheduled task.
 
 ## Contributing
 
-PRs welcome — bugs, new emotions, alternative mascot designs (the SVG generator in `bot_svg.py` is easy to extend).
+**PRs welcome** — Claude Pet is designed to be forked. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the ~10-line diff needed to add a new emotion, exercise, dashboard tab, integration, or theme. Bug fixes, translations, alternative mascot designs, and new exercise SVGs are especially appreciated.
+
+Star the repo if you want to boost the project → [github.com/nikhilagrima/claude-pet](https://github.com/nikhilagrima/claude-pet)
 
 ## License
 
