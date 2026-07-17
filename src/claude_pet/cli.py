@@ -45,10 +45,49 @@ def cmd_run(args):
     pet_app.main(show_in_dock=getattr(args, "show_in_dock", False))
 
 
+def _running_version() -> str | None:
+    """Version of the pet currently bound to :5050, or None if unreachable.
+    Older pets (< 0.3.3) lack /version — treated as 'stale, unknown'."""
+    import urllib.request
+    try:
+        with urllib.request.urlopen("http://localhost:5050/version", timeout=1) as r:
+            return json.loads(r.read()).get("version")
+    except Exception:
+        return None
+
+
+def _ask_running_pet_to_quit() -> bool:
+    """POST /shutdown to the running pet. True if it acknowledged."""
+    import urllib.request
+    try:
+        req = urllib.request.Request(
+            "http://localhost:5050/shutdown", data=b"{}",
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=2) as r:
+            r.read()
+        return True
+    except Exception:
+        return False
+
+
 def cmd_start(args):
     if _is_running():
-        print("[claude-pet] already running")
-        return 0
+        from . import __version__
+        running = _running_version()
+        if running == __version__:
+            print("[claude-pet] already running")
+            return 0
+        # A pet from an older install is holding the port — replace it so
+        # upgrades take effect without the user hunting down stale processes.
+        print(f"[claude-pet] running pet is v{running or 'unknown (pre-0.3.3)'}, "
+              f"installed is v{__version__} — restarting…")
+        if _ask_running_pet_to_quit():
+            time.sleep(1.0)
+        if _is_running():
+            # /shutdown unsupported (old version) or ignored — fall back to stop.
+            cmd_stop(args)
+            time.sleep(1.0)
     log_dir = Path(os.environ.get("TMPDIR", "/tmp"))
     log_path = log_dir / "claude_pet.log"
     creationflags = 0
