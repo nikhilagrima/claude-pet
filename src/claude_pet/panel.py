@@ -15,11 +15,11 @@ from datetime import datetime, timezone
 
 from PySide6.QtCore import Qt, QPointF, QTimer, QRectF
 from PySide6.QtGui import (
-    QAction, QBrush, QColor, QFont, QPainter, QPen, QPixmap,
+    QAction, QBrush, QColor, QFont, QFontDatabase, QPainter, QPen, QPixmap,
 )
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QGraphicsEllipseItem, QGraphicsLineItem,
-    QGraphicsScene, QGraphicsSimpleTextItem, QGraphicsView,
+    QApplication, QDialog, QGraphicsDropShadowEffect, QGraphicsEllipseItem,
+    QGraphicsLineItem, QGraphicsScene, QGraphicsSimpleTextItem, QGraphicsView,
     QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMessageBox,
     QPushButton, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
 )
@@ -27,18 +27,286 @@ from PySide6.QtWidgets import (
 from . import memory
 
 
+# ---------- futuristic HUD design tokens ----------
+# Deep-navy HUD/FUI palette from the reference — hairline cyan on dark blue,
+# tiny monospace data readouts, corner-bracket panel decorators.
+NEON = {
+    "bg_deep":    "#061027",
+    "bg_panel":   "#0A1A38",
+    "bg_card":    "#0F2140",
+    "bg_hover":   "#152A55",
+    "border":     "#1B3A70",     # hairline grid tone
+    "border_hi":  "#4FC3F7",     # bright cyan on interactive
+    "cyan":       "#4FC3F7",
+    "cyan_hi":    "#7DE3FF",     # for glow highlights
+    "blue":       "#3FA3FF",
+    "magenta":    "#F0ABFC",     # rare accent
+    "green":      "#4ADE80",
+    "orange":     "#F97316",
+    "red":        "#F87171",
+    "text":       "#DDEBFF",
+    "text_dim":   "#8CA9D6",
+    "text_muted": "#5A7099",
+}
+
+# Use a mono/tech font — falls back gracefully across OSes.
+def _neon_font() -> str:
+    return "JetBrains Mono, SF Mono, Menlo, Consolas, monospace"
+
+
 TIER_COLOR = {
-    "hatchling":  "#3FA3FF",
-    "apprentice": "#22D3EE",
-    "senior":     "#60A5FA",
-    "ponytail":   "#F97316",
+    "hatchling":  NEON["cyan"],
+    "apprentice": NEON["blue"],
+    "senior":     NEON["magenta"],
+    "ponytail":   NEON["orange"],
 }
 TIER_ICON = {
-    "hatchling":  "🥚",
-    "apprentice": "🐣",
-    "senior":     "🦉",
-    "ponytail":   "🦄",
+    "hatchling":  "◇",
+    "apprentice": "◆",
+    "senior":     "❖",
+    "ponytail":   "✦",
 }
+
+
+def _apply_neon_glow(widget: QWidget, color: str = None, radius: int = 22,
+                     offset: int = 0) -> QGraphicsDropShadowEffect:
+    """Attach a colored drop-shadow so the widget appears to glow."""
+    eff = QGraphicsDropShadowEffect(widget)
+    c = QColor(color or NEON["cyan"])
+    c.setAlpha(180)
+    eff.setColor(c)
+    eff.setBlurRadius(radius)
+    eff.setOffset(offset, offset)
+    widget.setGraphicsEffect(eff)
+    return eff
+
+
+class _CornerBrackets(QWidget):
+    """Purely decorative HUD corner brackets — 4 thin L-shapes at panel corners.
+    Signature FUI element from the reference. Non-interactive, click-through."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WA_NoSystemBackground)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(QColor(NEON["cyan"]))
+        pen.setWidthF(1.5)
+        p.setPen(pen)
+        w, h = self.width(), self.height()
+        L = 18   # bracket arm length
+        m = 6    # margin from edge
+        # top-left
+        p.drawLine(m, m, m + L, m); p.drawLine(m, m, m, m + L)
+        # top-right
+        p.drawLine(w - m - L, m, w - m, m); p.drawLine(w - m, m, w - m, m + L)
+        # bottom-left
+        p.drawLine(m, h - m, m + L, h - m); p.drawLine(m, h - m - L, m, h - m)
+        # bottom-right
+        p.drawLine(w - m - L, h - m, w - m, h - m)
+        p.drawLine(w - m, h - m - L, w - m, h - m)
+
+
+class _StatusStrip(QWidget):
+    """Top HUD readout: pet version, live status, tick count. Purely visual."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(22)
+        self._pulse = 0
+        t = QTimer(self); t.timeout.connect(self._blink); t.start(1000)
+
+    def _blink(self):
+        self._pulse = (self._pulse + 1) % 2
+        self.update()
+
+    def paintEvent(self, event):
+        from . import __version__
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        # Background strip
+        p.fillRect(self.rect(), QColor(NEON["bg_deep"]))
+        pen = QPen(QColor(NEON["border"])); pen.setWidthF(1)
+        p.setPen(pen)
+        p.drawLine(0, self.height() - 1, self.width(), self.height() - 1)
+        # Status dot (blinks)
+        dot_col = QColor(NEON["cyan"] if self._pulse else NEON["blue"])
+        p.setBrush(dot_col); p.setPen(Qt.NoPen)
+        p.drawEllipse(10, 8, 6, 6)
+        # Text
+        p.setPen(QColor(NEON["text_dim"]))
+        f = p.font(); f.setPointSize(9); f.setBold(True); f.setFamily("Menlo"); p.setFont(f)
+        p.drawText(24, 14, f"CLAUDE.PET v{__version__} :: LINK ACTIVE")
+        # Right-side ticker
+        p.setPen(QColor(NEON["cyan"]))
+        p.drawText(self.width() - 140, 14, "◤ MEMORY.BRAIN.ONLINE ◥")
+
+
+def _dashboard_stylesheet() -> str:
+    return f"""
+    QDialog {{
+        background: {NEON['bg_deep']};
+        color: {NEON['text']};
+        font-family: {_neon_font()};
+        font-size: 12px;
+    }}
+    QWidget {{
+        background: transparent;
+        color: {NEON['text']};
+        font-family: {_neon_font()};
+    }}
+    QLabel {{
+        color: {NEON['text']};
+        font-family: {_neon_font()};
+    }}
+
+    /* Tabs — neon underline on active */
+    QTabWidget::pane {{
+        border: 1px solid {NEON['border']};
+        border-radius: 14px;
+        background: {NEON['bg_panel']};
+        top: -1px;
+    }}
+    QTabBar::tab {{
+        background: transparent;
+        color: {NEON['text_dim']};
+        padding: 8px 18px;
+        margin-right: 6px;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        font-weight: 600;
+        font-family: {_neon_font()};
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        font-size: 11px;
+    }}
+    QTabBar::tab:hover {{
+        color: {NEON['cyan']};
+        background: {NEON['bg_card']};
+    }}
+    QTabBar::tab:selected {{
+        color: {NEON['cyan']};
+        background: {NEON['bg_card']};
+        border: 1px solid {NEON['border_hi']};
+    }}
+
+    /* Buttons — deep card with neon border on hover */
+    QPushButton {{
+        background: {NEON['bg_card']};
+        color: {NEON['text']};
+        border: 1px solid {NEON['border']};
+        padding: 10px 20px;
+        border-radius: 12px;
+        font-weight: 600;
+        font-family: {_neon_font()};
+        letter-spacing: 1px;
+        min-height: 24px;
+    }}
+    QPushButton:hover {{
+        border: 1px solid {NEON['cyan']};
+        color: {NEON['cyan']};
+        background: {NEON['bg_hover']};
+    }}
+    QPushButton:pressed {{
+        background: {NEON['border_hi']};
+        color: {NEON['bg_deep']};
+    }}
+    QPushButton:disabled {{
+        color: {NEON['text_muted']};
+        border-color: {NEON['border']};
+    }}
+    QPushButton#danger:hover {{
+        border-color: {NEON['red']};
+        color: {NEON['red']};
+    }}
+    QPushButton#primary {{
+        background: {NEON['bg_hover']};
+        border: 1px solid {NEON['cyan']};
+        color: {NEON['cyan']};
+    }}
+    QPushButton#primary:hover {{
+        background: {NEON['border_hi']};
+        color: {NEON['bg_deep']};
+    }}
+
+    /* Tables — HUD data grid */
+    QTableWidget {{
+        background: {NEON['bg_panel']};
+        border: 1px solid {NEON['border']};
+        border-radius: 12px;
+        gridline-color: {NEON['border']};
+        color: {NEON['text']};
+        alternate-background-color: {NEON['bg_card']};
+        font-family: {_neon_font()};
+        selection-background-color: {NEON['bg_hover']};
+        selection-color: {NEON['cyan']};
+    }}
+    QHeaderView::section {{
+        background: {NEON['bg_deep']};
+        color: {NEON['cyan']};
+        border: none;
+        border-bottom: 1px solid {NEON['border_hi']};
+        padding: 8px 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        font-size: 10px;
+    }}
+    QTableWidget::item {{
+        padding: 8px 6px;
+    }}
+    QTableWidget::item:selected {{
+        background: {NEON['bg_hover']};
+        color: {NEON['cyan']};
+    }}
+
+    /* Lists — same HUD feel */
+    QListWidget {{
+        background: {NEON['bg_panel']};
+        border: 1px solid {NEON['border']};
+        border-radius: 12px;
+        color: {NEON['text']};
+        padding: 6px;
+        font-family: {_neon_font()};
+    }}
+    QListWidget::item {{
+        background: {NEON['bg_card']};
+        border: 1px solid {NEON['border']};
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin: 4px 2px;
+    }}
+    QListWidget::item:hover {{
+        border-color: {NEON['border_hi']};
+        background: {NEON['bg_hover']};
+    }}
+    QListWidget::item:selected {{
+        border-color: {NEON['cyan']};
+        color: {NEON['cyan']};
+        background: {NEON['bg_hover']};
+    }}
+
+    /* Scrollbars */
+    QScrollBar:vertical {{
+        background: {NEON['bg_deep']};
+        width: 10px;
+        border-radius: 5px;
+    }}
+    QScrollBar::handle:vertical {{
+        background: {NEON['border']};
+        border-radius: 5px;
+        min-height: 30px;
+    }}
+    QScrollBar::handle:vertical:hover {{
+        background: {NEON['border_hi']};
+    }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+        background: none; height: 0;
+    }}
+    """
 
 
 class ProjectsTab(QWidget):
@@ -56,7 +324,9 @@ class ProjectsTab(QWidget):
         layout.addWidget(self.table, 1)
 
         button_row = QHBoxLayout()
-        self.delete_btn = QPushButton("Delete selected project from memory…")
+        self.delete_btn = QPushButton("⚠  DELETE FROM MEMORY")
+        self.delete_btn.setObjectName("danger")
+        self.delete_btn.setCursor(Qt.PointingHandCursor)
         self.delete_btn.clicked.connect(self._delete_selected)
         button_row.addWidget(self.delete_btn)
         button_row.addStretch(1)
@@ -177,17 +447,19 @@ class GraphTab(QWidget):
     render a demo graph so the tab is never dead. Pulsing accent color signals
     the graph is alive."""
 
+    # HUD palette: everything shades of cyan/blue except the two categories
+    # that need to POP (fixes and gotchas — user attention items).
     KIND_COLOR = {
-        "decision":   "#4ADE80",
-        "convention": "#3FA3FF",
-        "fix":        "#F97316",
-        "gotcha":     "#F87171",
-        "file":       "#A78BFA",
-        "function":   "#60A5FA",
-        "class":      "#22D3EE",
-        "module":     "#38BDF8",
-        "concept":    "#FCD34D",
-        "note":       "#94A3B8",
+        "decision":   "#4FC3F7",     # bright cyan
+        "convention": "#3FA3FF",     # electric blue
+        "fix":        "#F97316",     # signal orange (attention)
+        "gotcha":     "#F87171",     # alert red (attention)
+        "file":       "#7DE3FF",     # pale cyan
+        "function":   "#60A5FA",     # sky blue
+        "class":      "#22D3EE",     # cyan
+        "module":     "#38BDF8",     # brighter cyan
+        "concept":    "#F0ABFC",     # rare magenta accent
+        "note":       "#8CA9D6",     # muted blue-grey
     }
 
     # Physics constants — tuned to reach a stable layout in ~200 ticks.
@@ -210,8 +482,12 @@ class GraphTab(QWidget):
         layout.addWidget(self.info)
         self.view = QGraphicsView()
         self.view.setRenderHint(QPainter.Antialiasing)
-        self.view.setStyleSheet("background: #0A0A1F; border: none;")
+        self.view.setStyleSheet(
+            f"background: {NEON['bg_deep']}; "
+            f"border: 1px solid {NEON['border']}; border-radius: 12px;"
+        )
         self.view.setDragMode(QGraphicsView.ScrollHandDrag)
+        self.view.setCursor(Qt.OpenHandCursor)
         layout.addWidget(self.view, 1)
 
         # Physics state — populated on refresh().
@@ -473,36 +749,66 @@ class ErgonomicsTab(QWidget):
 
 
 class MemoryPanel(QDialog):
-    """The floating panel that opens when you click the pet."""
+    """The floating panel that opens when you click the pet.
+
+    Futuristic HUD/FUI aesthetic: deep navy background, hairline cyan
+    borders, corner brackets, monospace data readouts. Mascot code
+    (bot_svg.py) is untouched — this is dashboard-only styling."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Claude Pet — Memory")
         self.setModal(False)
-        self.resize(720, 520)
+        self.resize(760, 560)
+        self.setStyleSheet(_dashboard_stylesheet())
+
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        # HUD status strip at the top — signature FUI decorator.
+        self.status_strip = _StatusStrip(self)
+        layout.addWidget(self.status_strip)
+
         tabs = QTabWidget()
+        tabs.setDocumentMode(True)
+        tabs.setCursor(Qt.PointingHandCursor)
         self.projects = ProjectsTab()
         self.graph = GraphTab()
         self.skills = SkillsTab()
         self.stats = StatsTab()
         self.ergo = ErgonomicsTab()
-        tabs.addTab(self.projects, "Projects")
-        tabs.addTab(self.graph, "Graph")
-        tabs.addTab(self.skills, "Skills")
-        tabs.addTab(self.stats, "Stats")
-        tabs.addTab(self.ergo, "Ergonomics")
-        layout.addWidget(tabs)
+        tabs.addTab(self.projects, "PROJECTS")
+        tabs.addTab(self.graph, "GRAPH")
+        tabs.addTab(self.skills, "SKILLS")
+        tabs.addTab(self.stats, "STATS")
+        tabs.addTab(self.ergo, "ERGO")
+        layout.addWidget(tabs, 1)
 
         actions = QHBoxLayout()
-        refresh_btn = QPushButton("Refresh")
+        refresh_btn = QPushButton("↻  REFRESH")
+        refresh_btn.setCursor(Qt.PointingHandCursor)
         refresh_btn.clicked.connect(self._refresh_all)
-        close_btn = QPushButton("Close")
+        close_btn = QPushButton("CLOSE")
+        close_btn.setCursor(Qt.PointingHandCursor)
         close_btn.clicked.connect(self.close)
         actions.addStretch(1)
         actions.addWidget(refresh_btn)
         actions.addWidget(close_btn)
         layout.addLayout(actions)
+
+        # Decorative corner brackets overlay (transparent to mouse events).
+        self._brackets = _CornerBrackets(self)
+        self._brackets.setGeometry(0, 0, self.width(), self.height())
+        self._brackets.raise_()
+
+        # Ambient cyan glow around the whole dialog.
+        _apply_neon_glow(self, NEON["cyan"], radius=32, offset=0)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "_brackets"):
+            self._brackets.setGeometry(0, 0, self.width(), self.height())
 
     def _refresh_all(self):
         self.projects.refresh()
