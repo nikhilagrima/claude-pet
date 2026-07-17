@@ -82,76 +82,37 @@ def _apply_neon_glow(widget: QWidget, color: str = None, radius: int = 22,
 
 
 class _CornerBrackets(QWidget):
-    """Decorative HUD brackets + tick marks + subtle scanline.
-    Non-interactive, click-through. Animates a slow scanline sweep."""
+    """Four subtle L-brackets — signature futuristic accent, nothing else."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WA_NoSystemBackground)
-        self._scan_pos = 0.0
-        t = QTimer(self); t.timeout.connect(self._advance); t.start(60)
-
-    def _advance(self):
-        self._scan_pos = (self._scan_pos + 0.008) % 1.0
-        self.update()
 
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         w, h = self.width(), self.height()
-
-        # === Scanline sweep — a translucent cyan bar drifting top → bottom ===
-        scan_y = int(h * self._scan_pos)
-        for i, alpha in enumerate((28, 18, 10)):
-            c = QColor(NEON["cyan"]); c.setAlpha(alpha)
-            pen = QPen(c); pen.setWidthF(1)
-            p.setPen(pen)
-            p.drawLine(0, scan_y + i, w, scan_y + i)
-
-        # === Thick corner brackets ===
-        pen = QPen(QColor(NEON["cyan"])); pen.setWidthF(2.2)
-        pen.setCapStyle(Qt.RoundCap)
+        pen = QPen(QColor(NEON["cyan"])); pen.setWidthF(1.5); pen.setCapStyle(Qt.RoundCap)
         p.setPen(pen)
-        L = 28; m = 6
-        # top-left
-        p.drawLine(m, m, m + L, m); p.drawLine(m, m, m, m + L)
-        # top-right
-        p.drawLine(w - m - L, m, w - m, m); p.drawLine(w - m, m, w - m, m + L)
-        # bottom-left
-        p.drawLine(m, h - m, m + L, h - m); p.drawLine(m, h - m - L, m, h - m)
-        # bottom-right
-        p.drawLine(w - m - L, h - m, w - m, h - m)
-        p.drawLine(w - m, h - m - L, w - m, h - m)
-
-        # === Tick marks along top + bottom borders ===
-        tick_pen = QPen(QColor(NEON["border_hi"]))
-        tick_pen.setWidthF(1)
-        p.setPen(tick_pen)
-        for x in range(60, w - 60, 12):
-            long_tick = (x // 12) % 5 == 0
-            length = 6 if long_tick else 3
-            p.drawLine(x, 3, x, 3 + length)         # top
-            p.drawLine(x, h - 3, x, h - 3 - length) # bottom
-
-        # === Corner data readouts (tiny monospace coords) ===
-        p.setPen(QColor(NEON["text_dim"]))
-        f = p.font(); f.setPointSize(7); f.setFamily("Menlo"); f.setBold(True)
-        p.setFont(f)
-        p.drawText(m + L + 8, m + 10, "SYS.OK")
-        p.drawText(w - m - L - 60, m + 10, "SEC.NORMAL")
-        p.drawText(m + L + 8, h - m - 4, "TX ●●●")
-        p.drawText(w - m - L - 50, h - m - 4, "RX ●●●")
+        L = 14; m = 4
+        for (x1, y1, x2, y2, x3, y3) in (
+            (m, m + L, m, m, m + L, m),                                     # top-left
+            (w - m - L, m, w - m, m, w - m, m + L),                         # top-right
+            (m, h - m - L, m, h - m, m + L, h - m),                         # bottom-left
+            (w - m - L, h - m, w - m, h - m, w - m, h - m - L),             # bottom-right
+        ):
+            p.drawLine(x1, y1, x2, y2); p.drawLine(x2, y2, x3, y3)
 
 
 class _StatusStrip(QWidget):
-    """Top HUD readout: pet version, live status, tick count. Purely visual."""
+    """Minimal top strip: pulsing dot + wordmark. No ticker, no fake HUD text."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(22)
+        self.setFixedHeight(28)
         self._pulse = 0
-        t = QTimer(self); t.timeout.connect(self._blink); t.start(1000)
+        t = QTimer(self); t.timeout.connect(self._blink); t.start(1200)
 
     def _blink(self):
         self._pulse = (self._pulse + 1) % 2
@@ -161,38 +122,33 @@ class _StatusStrip(QWidget):
         from . import __version__
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        # Background strip
-        p.fillRect(self.rect(), QColor(NEON["bg_deep"]))
-        pen = QPen(QColor(NEON["border"])); pen.setWidthF(1)
-        p.setPen(pen)
-        p.drawLine(0, self.height() - 1, self.width(), self.height() - 1)
-        # Status dot (blinks)
-        dot_col = QColor(NEON["cyan"] if self._pulse else NEON["blue"])
+        # Pulsing dot
+        dot_col = QColor(NEON["cyan"])
+        dot_col.setAlpha(255 if self._pulse else 130)
         p.setBrush(dot_col); p.setPen(Qt.NoPen)
-        p.drawEllipse(10, 8, 6, 6)
-        # Text
-        p.setPen(QColor(NEON["text_dim"]))
-        f = p.font(); f.setPointSize(9); f.setBold(True); f.setFamily("Menlo"); p.setFont(f)
-        p.drawText(24, 14, f"CLAUDE.PET v{__version__} :: LINK ACTIVE")
-        # Right-side ticker
-        p.setPen(QColor(NEON["cyan"]))
-        p.drawText(self.width() - 140, 14, "◤ MEMORY.BRAIN.ONLINE ◥")
+        p.drawEllipse(6, 10, 8, 8)
+        # Wordmark
+        p.setPen(QColor(NEON["text"]))
+        f = p.font(); f.setPointSize(11); f.setBold(True); f.setFamily("Menlo"); p.setFont(f)
+        p.drawText(22, 20, "CLAUDE PET")
+        p.setPen(QColor(NEON["text_muted"]))
+        f2 = p.font(); f2.setBold(False); f2.setPointSize(9); p.setFont(f2)
+        p.drawText(122, 20, f"v{__version__}")
 
 
 def _dashboard_stylesheet() -> str:
+    # Do NOT set QWidget { background: transparent } — that made every tab
+    # translucent and prior-tab content bled through. Set backgrounds
+    # explicitly per widget class instead.
     return f"""
     QDialog {{
         background: {NEON['bg_deep']};
         color: {NEON['text']};
         font-family: {_neon_font()};
-        font-size: 12px;
-    }}
-    QWidget {{
-        background: transparent;
-        color: {NEON['text']};
-        font-family: {_neon_font()};
+        font-size: 13px;
     }}
     QLabel {{
+        background: transparent;
         color: {NEON['text']};
         font-family: {_neon_font()};
     }}
@@ -205,26 +161,25 @@ def _dashboard_stylesheet() -> str:
         top: -1px;
     }}
     QTabBar::tab {{
-        background: transparent;
+        background: {NEON['bg_panel']};
         color: {NEON['text_dim']};
-        padding: 8px 18px;
-        margin-right: 6px;
-        border: 1px solid transparent;
-        border-radius: 10px;
+        padding: 10px 22px;
+        margin-right: 4px;
+        border: 1px solid {NEON['border']};
+        border-radius: 8px;
         font-weight: 600;
         font-family: {_neon_font()};
         letter-spacing: 1px;
-        text-transform: uppercase;
-        font-size: 11px;
+        font-size: 12px;
     }}
     QTabBar::tab:hover {{
         color: {NEON['cyan']};
-        background: {NEON['bg_card']};
+        border-color: {NEON['border_hi']};
     }}
     QTabBar::tab:selected {{
         color: {NEON['cyan']};
         background: {NEON['bg_card']};
-        border: 1px solid {NEON['border_hi']};
+        border-color: {NEON['cyan']};
     }}
 
     /* Buttons — deep card with neon border on hover */
@@ -917,21 +872,29 @@ class MemoryPanel(QDialog):
         self.setStyleSheet(_dashboard_stylesheet())
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(10)
+        layout.setContentsMargins(18, 14, 18, 16)
+        layout.setSpacing(12)
 
-        # HUD status strip at the top — signature FUI decorator.
+        # Minimal top status strip: pulsing dot + wordmark. No ticker.
         self.status_strip = _StatusStrip(self)
         layout.addWidget(self.status_strip)
 
         tabs = QTabWidget()
-        tabs.setDocumentMode(True)
         tabs.setCursor(Qt.PointingHandCursor)
+        # Give every tab a solid panel background so switching tabs never
+        # leaves the previous view visible (Qt widget transparency bug).
+        for tab_cls in (ProjectsTab, GraphTab, SkillsTab, StatsTab, ErgonomicsTab):
+            pass  # instantiated below with explicit bg
         self.projects = ProjectsTab()
         self.graph = GraphTab()
         self.skills = SkillsTab()
         self.stats = StatsTab()
         self.ergo = ErgonomicsTab()
+        for tab in (self.projects, self.graph, self.skills, self.stats, self.ergo):
+            tab.setAutoFillBackground(True)
+            tab.setStyleSheet(
+                f"background: {NEON['bg_panel']}; border-radius: 10px;"
+            )
         tabs.addTab(self.projects, "PROJECTS")
         tabs.addTab(self.graph, "GRAPH")
         tabs.addTab(self.skills, "SKILLS")
@@ -940,10 +903,11 @@ class MemoryPanel(QDialog):
         layout.addWidget(tabs, 1)
 
         actions = QHBoxLayout()
-        refresh_btn = QPushButton("↻  REFRESH")
+        actions.setSpacing(8)
+        refresh_btn = QPushButton("Refresh")
         refresh_btn.setCursor(Qt.PointingHandCursor)
         refresh_btn.clicked.connect(self._refresh_all)
-        close_btn = QPushButton("CLOSE")
+        close_btn = QPushButton("Close")
         close_btn.setCursor(Qt.PointingHandCursor)
         close_btn.clicked.connect(self.close)
         actions.addStretch(1)
@@ -951,13 +915,10 @@ class MemoryPanel(QDialog):
         actions.addWidget(close_btn)
         layout.addLayout(actions)
 
-        # Decorative corner brackets overlay (transparent to mouse events).
+        # Subtle corner brackets — small, static, no glow.
         self._brackets = _CornerBrackets(self)
         self._brackets.setGeometry(0, 0, self.width(), self.height())
         self._brackets.raise_()
-
-        # Ambient cyan glow around the whole dialog.
-        _apply_neon_glow(self, NEON["cyan"], radius=32, offset=0)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
