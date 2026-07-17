@@ -88,8 +88,10 @@ def cmd_start(args):
             # /shutdown unsupported (old version) or ignored — fall back to stop.
             cmd_stop(args)
             time.sleep(1.0)
-    log_dir = Path(os.environ.get("TMPDIR", "/tmp"))
-    log_path = log_dir / "claude_pet.log"
+    # tempfile.gettempdir() is correct on every OS (TMPDIR/TEMP/TMP or
+    # platform default). A hardcoded /tmp fallback broke Windows entirely.
+    import tempfile
+    log_path = Path(tempfile.gettempdir()) / "claude_pet.log"
     creationflags = 0
     if sys.platform == "win32":
         creationflags = 0x00000008 | 0x00000200
