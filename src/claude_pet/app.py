@@ -129,12 +129,24 @@ class SoundPlayer:
 
 
 def _always_on_top_flags():
-    """Flags that keep the pet visible above every app on every OS."""
+    """Flags that keep the pet visible above every app on every OS.
+
+    Design notes on the flag combo (macOS is picky):
+    - Qt.SplashScreen used to be here but causes macOS to fade + hide the
+      window when the app deactivates. Removed.
+    - Qt.Tool auto-hides when the owning app loses focus on macOS. Not used.
+    - Qt.ToolTip windows on macOS don't take focus AND don't auto-hide,
+      which is exactly what we want — but Qt.ToolTip is treated as an
+      overlay by some window managers on Linux/Windows and clips.
+      Compromise: FramelessWindowHint + WindowStaysOnTopHint is enough on
+      Linux/Windows; on macOS we ALSO bump NSWindow level to 1000 in
+      _pin_to_top_macos which does the heavy lifting there.
+    """
     return (
         Qt.FramelessWindowHint
         | Qt.WindowStaysOnTopHint
-        | Qt.SplashScreen
         | Qt.NoDropShadowWindowHint
+        | Qt.WindowDoesNotAcceptFocus
     )
 
 
@@ -209,6 +221,30 @@ class PetWindow(QWidget):
         self._pin_to_top_macos()
 
     def _pin_to_top_macos(self):
+        """Aggressively keep the pet above every other window on macOS.
+
+        macOS silently lowers a window's level after Mission Control, Space
+        switches, fullscreen transitions, or when other apps grab focus. A
+        one-shot pin at startup isn't enough — the pet reappears buried
+        behind other apps within minutes.
+
+        Countermeasures stacked:
+        - Level = NSScreenSaverWindowLevel (1000). Higher than status bar
+          (25), popup menus (101), or floating panels (3). Only the menu
+          bar sits above it in normal use.
+        - CollectionBehavior includes CanJoinAllSpaces (every desktop),
+          Stationary (doesn't slide with Space switches),
+          FullScreenAuxiliary (shows over fullscreen apps),
+          IgnoresCycle (Cmd-Tab skips it → no focus theft that could hide).
+        - hidesOnDeactivate = NO. Prevents auto-hide when the app is not
+          frontmost — the root cause of the "goes away when I open another
+          app" complaint.
+        - orderFrontRegardless: brings to front WITHOUT stealing focus
+          from whatever the user is actively using.
+        - A repeating 2s QTimer re-asserts all of the above so nothing —
+          not fullscreen video, not screensaver return, not desktop
+          switching — can quietly demote us.
+        """
         if sys.platform != "darwin":
             return
         try:
@@ -217,16 +253,62 @@ class PetWindow(QWidget):
                 NSWindowCollectionBehaviorCanJoinAllSpaces,
                 NSWindowCollectionBehaviorStationary,
                 NSWindowCollectionBehaviorFullScreenAuxiliary,
+                NSWindowCollectionBehaviorIgnoresCycle,
             )
-            NS_STATUS_WINDOW_LEVEL = 25
+            # NSScreenSaverWindowLevel from NSWindow.h.
+            NS_SCREEN_SAVER_WINDOW_LEVEL = 1000
+            behavior = (
+                NSWindowCollectionBehaviorCanJoinAllSpaces
+                | NSWindowCollectionBehaviorStationary
+                | NSWindowCollectionBehaviorFullScreenAuxiliary
+                | NSWindowCollectionBehaviorIgnoresCycle
+            )
             for w in NSApp().windows():
                 try:
-                    w.setLevel_(NS_STATUS_WINDOW_LEVEL)
-                    w.setCollectionBehavior_(
-                        NSWindowCollectionBehaviorCanJoinAllSpaces
-                        | NSWindowCollectionBehaviorStationary
-                        | NSWindowCollectionBehaviorFullScreenAuxiliary
-                    )
+                    w.setLevel_(NS_SCREEN_SAVER_WINDOW_LEVEL)
+                    w.setCollectionBehavior_(behavior)
+                    w.setHidesOnDeactivate_(False)
+                    w.orderFrontRegardless()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Install the watchdog once — repeats every 2s, cheap no-op on other
+        # platforms.
+        if not getattr(self, "_pin_watchdog", None):
+            self._pin_watchdog = QTimer(self)
+            self._pin_watchdog.timeout.connect(self._repin_macos_windows)
+            self._pin_watchdog.start(2000)
+
+    def _repin_macos_windows(self):
+        """Called every 2s by the watchdog — re-asserts window level.
+
+        Reads the current state instead of relying on a cached flag so if
+        the panel opens mid-session, it gets pinned too."""
+        if sys.platform != "darwin":
+            return
+        try:
+            from AppKit import (
+                NSApp,
+                NSWindowCollectionBehaviorCanJoinAllSpaces,
+                NSWindowCollectionBehaviorStationary,
+                NSWindowCollectionBehaviorFullScreenAuxiliary,
+                NSWindowCollectionBehaviorIgnoresCycle,
+            )
+            behavior = (
+                NSWindowCollectionBehaviorCanJoinAllSpaces
+                | NSWindowCollectionBehaviorStationary
+                | NSWindowCollectionBehaviorFullScreenAuxiliary
+                | NSWindowCollectionBehaviorIgnoresCycle
+            )
+            for w in NSApp().windows():
+                try:
+                    if w.level() < 1000:
+                        w.setLevel_(1000)
+                        w.setCollectionBehavior_(behavior)
+                        w.setHidesOnDeactivate_(False)
+                        w.orderFrontRegardless()
                 except Exception:
                     pass
         except Exception:
