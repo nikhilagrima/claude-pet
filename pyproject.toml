@@ -31,9 +31,16 @@ dependencies = [
   "flask-cors>=4.0",
   "Pillow>=10.0",
   "requests>=2.31",
+  # Auto-install on macOS. Without this, _pin_to_top_macos silently no-ops
+  # in its try/except and the pet drops behind other windows within seconds.
+  # Kept in `dependencies` (not optional) with a platform marker so a plain
+  # `pip install claude-pet` on macOS gets it every time.
+  "pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'",
 ]
 
 [project.optional-dependencies]
+# Kept for backwards compatibility with the old install.sh flow; new installs
+# get pyobjc automatically via the platform-marker line above.
 macos = ["pyobjc-framework-Cocoa>=10.0"]
 
 [project.scripts]
