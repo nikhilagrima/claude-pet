@@ -189,13 +189,26 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def normalize_project_path(path: str) -> str:
+    """Canonical identity for a project directory.
+
+    realpath() resolves symlinks (macOS /tmp → /private/tmp aliasing was
+    observed splitting one project into two identities in real use) and
+    trailing-slash / relative-path variations. Every read AND write path
+    must funnel through this so context can never attach to the wrong
+    project identity."""
+    if not path:
+        return path
+    return os.path.realpath(os.path.expanduser(path))
+
+
 def current_project() -> str:
     """Best guess at 'the project the user is working in right now.'
 
     Prefers CLAUDE_PROJECT_DIR (Claude Code sets this in hooks), falls back
-    to the current working directory.
-    """
-    return os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    to the current working directory. Always normalized."""
+    raw = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    return normalize_project_path(raw)
 
 
 def _upsert_project(conn: sqlite3.Connection, path: str) -> None:
@@ -213,7 +226,7 @@ def _upsert_project(conn: sqlite3.Connection, path: str) -> None:
 
 def record_session_start(project_path: str | None = None) -> int:
     """Called on Claude Code SessionStart. Returns the session id."""
-    project_path = project_path or current_project()
+    project_path = normalize_project_path(project_path) if project_path else current_project()
     now = _now()
     with connect() as conn:
         _upsert_project(conn, project_path)
@@ -229,7 +242,7 @@ def record_session_start(project_path: str | None = None) -> int:
 
 
 def record_tool_use(tool_name: str, project_path: str | None = None) -> None:
-    project_path = project_path or current_project()
+    project_path = normalize_project_path(project_path) if project_path else current_project()
     if not tool_name:
         return
     now = _now()
@@ -255,7 +268,7 @@ def record_tool_use(tool_name: str, project_path: str | None = None) -> None:
 
 
 def record_success(project_path: str | None = None) -> None:
-    project_path = project_path or current_project()
+    project_path = normalize_project_path(project_path) if project_path else current_project()
     with connect() as conn:
         conn.execute(
             """
@@ -267,7 +280,7 @@ def record_success(project_path: str | None = None) -> None:
 
 
 def record_error(project_path: str | None = None) -> None:
-    project_path = project_path or current_project()
+    project_path = normalize_project_path(project_path) if project_path else current_project()
     with connect() as conn:
         conn.execute(
             """
@@ -279,7 +292,7 @@ def record_error(project_path: str | None = None) -> None:
 
 
 def add_note(text: str, project_path: str | None = None) -> None:
-    project_path = project_path or current_project()
+    project_path = normalize_project_path(project_path) if project_path else current_project()
     with connect() as conn:
         _upsert_project(conn, project_path)
         conn.execute(
@@ -290,7 +303,7 @@ def add_note(text: str, project_path: str | None = None) -> None:
 
 def project_summary(project_path: str | None = None) -> dict:
     """Everything we know about one project — for CLI display or feeding to Claude."""
-    project_path = project_path or current_project()
+    project_path = normalize_project_path(project_path) if project_path else current_project()
     with connect() as conn:
         proj = conn.execute(
             "SELECT * FROM projects WHERE path = ?", (project_path,)
@@ -349,6 +362,7 @@ def delete_project(project_path: str) -> dict:
     Cascades across every table that references project_path. Idempotent — a
     second call on the same path returns zeros.
     """
+    project_path = normalize_project_path(project_path)
     counts = {}
     with connect() as conn:
         # Order matters: delete edges/nodes first (nodes has ON DELETE CASCADE
@@ -459,6 +473,7 @@ def upsert_node(
     """Insert or reinforce a node. Repeats bump weight + reinforcements + last_seen.
 
     Returns the node id. Idempotent by (project_path, kind, key)."""
+    project_path = normalize_project_path(project_path)
     now = _now()
     with connect() as conn:
         _upsert_project(conn, project_path)
@@ -506,6 +521,7 @@ def top_nodes(
     query: str | None = None,
     kinds: tuple[str, ...] | None = None,
 ) -> list[dict]:
+    project_path = normalize_project_path(project_path)
     """Rank nodes for injection: weight × exp(-hours_since_last / 168).
 
     If FTS5 is available and `query` is provided, we add BM25 boost.
@@ -627,12 +643,29 @@ def upsert_skill(
         }
 
 
-def list_skills() -> list[dict]:
+def list_skills(project_path: str | None = None) -> list[dict]:
+    """All skills, or only those earned in the given project.
+
+    Injection MUST pass project_path — a skill like 'this codebase is
+    Edit-dominant' learned in project A is wrong context in project B.
+    The panel's Skills tab passes None deliberately (global overview)."""
     with connect() as conn:
         rows = conn.execute(
             "SELECT * FROM skills ORDER BY level DESC, last_used DESC LIMIT 200"
         ).fetchall()
-        return [dict(r) for r in rows]
+    skills = [dict(r) for r in rows]
+    if project_path is None:
+        return skills
+    wanted = normalize_project_path(project_path)
+    out = []
+    for s in skills:
+        try:
+            paths = {normalize_project_path(p) for p in json.loads(s["project_paths"])}
+        except Exception:
+            paths = set()
+        if wanted in paths:
+            out.append(s)
+    return out
 
 
 def top_tier() -> str:

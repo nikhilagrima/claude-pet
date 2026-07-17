@@ -111,8 +111,10 @@ def _nodes_section(project_path: str, cap: int) -> tuple[str, list[str]]:
     return "\n".join(lines), sorted(known_files)
 
 
-def _skills_section(cap: int) -> str:
-    skills = memory.list_skills()
+def _skills_section(cap: int, project_path: str) -> str:
+    # ONLY skills earned in this project — cross-project skill descriptions
+    # ("this codebase is Edit-dominant") are wrong context elsewhere.
+    skills = memory.list_skills(project_path)
     if not skills:
         return ""
     tier_icon = {"hatchling": "🥚", "apprentice": "🐣",
@@ -169,7 +171,7 @@ def build_context(
     if nodes_block:
         parts.append(nodes_block)
 
-    skills_block = _skills_section(CAPS["skills"])
+    skills_block = _skills_section(CAPS["skills"], project_path)
     if skills_block:
         parts.append(skills_block)
 
