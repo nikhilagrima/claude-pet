@@ -193,10 +193,12 @@ class PetWindow(QWidget):
             time.sleep(30)
 
     def _drain_github_alerts(self):
-        """Deliver at most one pending GitHub event as a pet reaction per tick.
+        """Deliver at most one pending GitHub event per tick — sound + pet
+        emotion + visible toast so the developer knows WHAT happened, not
+        just that something happened.
 
-        Multiple events queue up naturally — each subsequent tick emits the
-        next one, so a burst of activity plays through instead of stacking.
+        Multiple events queue naturally: one per tick keeps them from
+        stacking as a wall of toasts.
         """
         try:
             from .github_watch import storage as gh_storage
@@ -205,20 +207,102 @@ class PetWindow(QWidget):
                 return
             ev = pending[0]
             reaction = ev.get("reaction", "curious")
-            # Reaction → pet state + sound. States that already exist in bot_svg.
+            # Pet emotion — states that already exist in bot_svg.
             state_map = {"success": "success", "error": "error",
                          "curious": "curious"}
             self._set_state(state_map.get(reaction, "curious"), post=True)
+            # Distinct sound per reaction.
             sound_map = {"success": "success", "error": "error",
                          "curious": "attention"}
             self.sound.play(sound_map.get(reaction, "attention"))
+            # Toast — shows the summary + link. Kept as a lazy import so
+            # headless installs don't need the notification module loaded.
+            try:
+                from .github_watch.notification import GithubActivityToast
+                slug = f"{ev.get('owner', '?')}/{ev.get('repo', '?')}"
+                toast = GithubActivityToast(
+                    title=ev.get("title") or "GitHub activity",
+                    repo_slug=slug,
+                    reaction=reaction,
+                    url=ev.get("url"),
+                )
+                # Keep a strong ref so Python doesn't GC it while it's shown.
+                self._active_gh_toasts = getattr(self, "_active_gh_toasts", [])
+                # Drop dismissed ones lazily so the list doesn't grow forever.
+                self._active_gh_toasts = [
+                    t for t in self._active_gh_toasts if t.isVisible()
+                ]
+                self._active_gh_toasts.append(toast)
+                toast.show()
+            except Exception as exc:
+                print(f"[pet] github toast render error: {exc}")
             gh_storage.mark_alerted(ev["id"])
         except Exception as exc:
             print(f"[pet] github alert delivery error: {exc}")
 
     def showEvent(self, event):
         super().showEvent(event)
-        self._pin_to_top_macos()
+        self._pin_to_top()
+
+    def _pin_to_top(self):
+        """Cross-platform 'always on top' with a per-OS strategy.
+
+        macOS: NSWindow.level=1500 + accessory activation policy + Space
+               observer. Qt.WindowStaysOnTopHint alone is not enough.
+        Windows: Qt.WindowStaysOnTopHint gets us most of the way but
+                 focus events can demote us; a periodic SetWindowPos
+                 HWND_TOPMOST reasserts it.
+        Linux X11: Qt.WindowStaysOnTopHint maps to _NET_WM_STATE_ABOVE
+                   which most WMs honor. No extra work needed unless the
+                   user sets a WM that ignores it.
+        Linux Wayland: compositor controls stacking by design. Best-
+                       effort with WindowStaysOnTopHint.
+        """
+        if sys.platform == "darwin":
+            self._pin_to_top_macos()
+        elif sys.platform == "win32":
+            self._pin_to_top_windows()
+        # Linux: nothing extra beyond the Qt flag; watchdog is still
+        # installed for consistency and future WM-specific tweaks.
+        if not getattr(self, "_pin_watchdog", None):
+            self._pin_watchdog = QTimer(self)
+            self._pin_watchdog.timeout.connect(self._watchdog_tick)
+            # 250ms on macOS to catch fullscreen transitions; 750ms
+            # everywhere else is enough since demotions are rarer.
+            interval = 250 if sys.platform == "darwin" else 750
+            self._pin_watchdog.start(interval)
+
+    def _watchdog_tick(self):
+        """Called at 4Hz on macOS, ~1.3Hz elsewhere. Cheap fast path when
+        the pin is already at target."""
+        if sys.platform == "darwin":
+            self._apply_macos_pin(force=False)
+        elif sys.platform == "win32":
+            self._pin_to_top_windows()
+
+    def _pin_to_top_windows(self):
+        """SetWindowPos(HWND_TOPMOST) via ctypes.
+
+        Qt.WindowStaysOnTopHint takes care of the initial pinning but
+        Windows will drop us out of the topmost set on focus loss in
+        some scenarios (esp. when a fullscreen app has just closed).
+        Reasserting HWND_TOPMOST every watchdog tick is the standard
+        workaround.
+        """
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            HWND_TOPMOST = -1
+            SWP_NOMOVE = 0x0002
+            SWP_NOSIZE = 0x0001
+            SWP_NOACTIVATE = 0x0010     # crucial: don't steal focus
+            SWP_ASYNCWINDOWPOS = 0x4000  # non-blocking
+            flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS
+            hwnd = int(self.winId())
+            ctypes.windll.user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, flags)
+        except Exception:
+            pass
 
     def _pin_to_top_macos(self):
         """Aggressively keep the pet above every other window on macOS.
@@ -246,16 +330,6 @@ class PetWindow(QWidget):
           switching — can quietly demote us.
         """
         self._apply_macos_pin(force=True)
-        # Install the watchdog once — 250ms tick, cheap because the
-        # force=False fast path early-exits when level is already at target.
-        # 250ms because Sequoia's fullscreen-enter transition can leave the
-        # pet stranded on the old Space for up to ~500ms without a re-pin.
-        if not getattr(self, "_pin_watchdog", None):
-            self._pin_watchdog = QTimer(self)
-            self._pin_watchdog.timeout.connect(
-                lambda: self._apply_macos_pin(force=False)
-            )
-            self._pin_watchdog.start(250)
         # Register for NSWorkspace notifications so we re-pin the INSTANT
         # macOS activates a different Space (e.g. another app entered
         # fullscreen). Without this, the pet is invisible on the new Space
