@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Claude Pet — Virtual Companion for Claude Code</title>
+<meta name="description" content="A transparent desktop mascot that reacts to Claude Code events, remembers every project you code in, learns skills from repeated patterns, and coaches your ergonomics with animated exercises. 100% local. Open source." />
+
+<!-- Social preview -->
+<meta property="og:title" content="Claude Pet — Virtual Companion for Claude Code" />
+<meta property="og:description" content="Reacts to every Claude Code event. Remembers projects. Learns skills. Coaches your ergonomics. 100% local, open source." />
+<meta property="og:image" content="assets/emotions.png" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary_large_image" />
+
+<link rel="icon" type="image/png" href="assets/icon.png" />
+
+<style>
+  :root {
+    --bg-deep:    #061027;
+    --bg-panel:   #0A1A38;
+    --bg-card:    #0F2140;
+    --bg-hover:   #152A55;
+    --border:     #1B3A70;
+    --border-hi:  #4FC3F7;
+    --cyan:       #4FC3F7;
+    --cyan-hi:    #7DE3FF;
+    --blue:       #3FA3FF;
+    --green:      #4ADE80;
+    --orange:     #F97316;
+    --red:        #F87171;
+    --text:       #DDEBFF;
+    --text-dim:   #8CA9D6;
+    --text-muted: #5A7099;
+    --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, ui-monospace, monospace;
+    --sans: -apple-system, "Segoe UI", Helvetica, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg-deep); color: var(--text); font-family: var(--sans); }
+  body {
+    background:
+      radial-gradient(ellipse at 50% 0%, #0d2857 0%, transparent 60%),
+      radial-gradient(ellipse at 20% 100%, #082041 0%, transparent 60%),
+      var(--bg-deep);
+    min-height: 100vh;
+  }
+  a { color: var(--cyan); text-decoration: none; }
+  a:hover { color: var(--cyan-hi); }
+
+  /* -------- top nav -------- */
+  nav {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 20px 40px;
+    max-width: 1200px; margin: 0 auto;
+  }
+  nav .brand { display: flex; align-items: center; gap: 12px; font-family: var(--mono); font-weight: 700; letter-spacing: 1px; }
+  nav .brand img { width: 32px; height: 32px; }
+  nav .brand small { color: var(--text-muted); font-weight: 500; margin-left: 4px; }
+  nav .links a { margin-left: 24px; font-family: var(--mono); font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); }
+  nav .links a:hover { color: var(--cyan); }
+
+  /* -------- hero -------- */
+  header.hero {
+    text-align: center; padding: 40px 20px 80px;
+    max-width: 900px; margin: 0 auto;
+  }
+  header.hero img.logo { width: 160px; height: 160px; margin-bottom: 24px; filter: drop-shadow(0 0 40px rgba(79, 195, 247, 0.4)); }
+  header.hero h1 {
+    font-size: clamp(36px, 6vw, 64px); margin: 0 0 12px;
+    font-family: var(--mono); letter-spacing: -0.5px;
+    background: linear-gradient(120deg, var(--cyan-hi) 0%, var(--blue) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header.hero p.tagline {
+    font-size: clamp(16px, 2vw, 20px); color: var(--text-dim);
+    max-width: 640px; margin: 0 auto 32px; line-height: 1.5;
+  }
+  .cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-weight: 600; font-size: 14px;
+    padding: 14px 26px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--bg-card); color: var(--text); cursor: pointer;
+    transition: all 0.15s ease;
+    text-decoration: none; letter-spacing: 0.5px;
+  }
+  .btn:hover { border-color: var(--cyan); color: var(--cyan); background: var(--bg-hover); transform: translateY(-1px); }
+  .btn.primary { background: var(--cyan); color: var(--bg-deep); border-color: var(--cyan); }
+  .btn.primary:hover { background: var(--cyan-hi); color: var(--bg-deep); border-color: var(--cyan-hi); }
+  .badges { display: flex; gap: 10px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
+  .badges img { height: 22px; }
+
+  /* -------- section wrapper -------- */
+  section { max-width: 1100px; margin: 0 auto; padding: 60px 20px; }
+  section h2 {
+    font-family: var(--mono); font-size: 28px; margin: 0 0 8px;
+    letter-spacing: -0.5px; color: var(--text);
+  }
+  section h2 .marker { color: var(--cyan); margin-right: 12px; }
+  section p.lede { color: var(--text-dim); max-width: 640px; margin: 0 0 32px; line-height: 1.6; }
+
+  /* -------- feature grid -------- */
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .feature {
+    padding: 24px; border: 1px solid var(--border); border-radius: 12px;
+    background: var(--bg-card); position: relative;
+    transition: border-color 0.15s ease, transform 0.15s ease;
+  }
+  .feature:hover { border-color: var(--cyan); transform: translateY(-2px); }
+  .feature::before {
+    content: ""; position: absolute; left: 0; top: 16px; bottom: 16px; width: 3px;
+    background: var(--cyan); border-radius: 3px;
+  }
+  .feature h3 { margin: 0 0 8px; font-family: var(--mono); font-size: 15px; color: var(--cyan); text-transform: uppercase; letter-spacing: 1px; }
+  .feature p { margin: 0; font-size: 14px; line-height: 1.55; color: var(--text-dim); }
+
+  /* -------- ergonomics grid (live SVGs) -------- */
+  .ergo-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;
+  }
+  .ergo-card {
+    padding: 12px 12px 6px; border-radius: 14px;
+    border: 1px solid var(--border); background: var(--bg-card);
+    text-align: center;
+    background-image:
+      repeating-linear-gradient(0deg, transparent 0, transparent 23px, rgba(79, 195, 247, 0.04) 24px);
+  }
+  .ergo-card svg { width: 100%; height: auto; max-height: 220px; display: block; }
+  .ergo-card .caption {
+    margin-top: 8px; font-family: var(--mono); font-size: 11px;
+    color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase;
+  }
+
+  /* -------- install block -------- */
+  .install-block {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;
+    margin-top: 24px;
+  }
+  .install-card {
+    padding: 20px; border: 1px solid var(--border); border-radius: 12px;
+    background: var(--bg-panel);
+  }
+  .install-card h3 { margin: 0 0 12px; font-family: var(--mono); font-size: 14px; color: var(--cyan); text-transform: uppercase; letter-spacing: 1.5px; }
+  .install-card p { margin: 0 0 12px; color: var(--text-dim); font-size: 14px; line-height: 1.55; }
+  pre.code {
+    background: var(--bg-deep); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 16px; font-family: var(--mono); font-size: 12px;
+    color: var(--cyan-hi); overflow-x: auto; margin: 0 0 12px; position: relative;
+  }
+  pre.code button.copy {
+    position: absolute; top: 8px; right: 8px;
+    background: var(--bg-card); border: 1px solid var(--border); color: var(--text-dim);
+    font-family: var(--mono); font-size: 10px; padding: 4px 8px; border-radius: 6px;
+    cursor: pointer; text-transform: uppercase; letter-spacing: 1px;
+  }
+  pre.code button.copy:hover { color: var(--cyan); border-color: var(--cyan); }
+  pre.code button.copy.copied { color: var(--green); border-color: var(--green); }
+
+  /* -------- emotions strip -------- */
+  .emotions-wrap {
+    text-align: center; margin-top: 24px; padding: 24px;
+    border: 1px solid var(--border); border-radius: 14px; background: var(--bg-card);
+  }
+  .emotions-wrap img { max-width: 100%; height: auto; border-radius: 10px; }
+
+  /* -------- footer -------- */
+  footer {
+    max-width: 1100px; margin: 40px auto 0; padding: 40px 20px;
+    border-top: 1px solid var(--border); text-align: center;
+    color: var(--text-muted); font-size: 13px; font-family: var(--mono); letter-spacing: 0.5px;
+  }
+  footer a { color: var(--text-dim); }
+  footer a:hover { color: var(--cyan); }
+
+  /* -------- corner brackets decoration on section headings -------- */
+  section h2::after {
+    content: ""; display: block; width: 60px; height: 2px;
+    background: linear-gradient(to right, var(--cyan), transparent);
+    margin-top: 8px;
+  }
+
+  /* -------- mobile -------- */
+  @media (max-width: 600px) {
+    nav { padding: 16px 20px; flex-direction: column; gap: 12px; }
+    nav .links a { margin-left: 0; margin-right: 20px; }
+    header.hero { padding: 20px 20px 40px; }
+    section { padding: 40px 20px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="brand">
+    <img src="assets/icon.png" alt="" />
+    CLAUDE PET <small>by Byteflow.bot</small>
+  </div>
+  <div class="links">
+    <a href="#features">Features</a>
+    <a href="#ergonomics">Ergonomics</a>
+    <a href="#install">Install</a>
+    <a href="https://github.com/nikhilagrima/claude-pet" target="_blank" rel="noopener">GitHub ↗</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <img class="logo" src="assets/logo.png" alt="Claude Pet mascot" />
+  <h1>Claude's Virtual Pet<br />for Coders</h1>
+  <p class="tagline">
+    A transparent desktop mascot that <b>reacts to every Claude Code event</b>,
+    <b>remembers every project</b> you code in, <b>learns skills</b> from repeated patterns,
+    and <b>coaches your ergonomics</b> with animated exercises. 100% local. Open source.
+  </p>
+  <div class="cta-row">
+    <a class="btn primary" href="https://github.com/nikhilagrima/claude-pet/releases/latest" target="_blank" rel="noopener">
+      Download latest release ↓
+    </a>
+    <a class="btn" href="https://github.com/nikhilagrima/claude-pet" target="_blank" rel="noopener">
+      View on GitHub ↗
+    </a>
+  </div>
+  <div class="badges">
+    <img src="https://img.shields.io/github/v/release/nikhilagrima/claude-pet?color=4FC3F7&label=release&style=flat-square" alt="release" />
+    <img src="https://img.shields.io/badge/tests-83%20passing-4ADE80?style=flat-square" alt="tests" />
+    <img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-3FA3FF?style=flat-square" alt="platforms" />
+    <img src="https://img.shields.io/badge/license-MIT-8CA9D6?style=flat-square" alt="license" />
+  </div>
+</header>
+
+<section id="features">
+  <h2><span class="marker">◆</span>What it does</h2>
+  <p class="lede">
+    Claude Code runs in your terminal. If you tab away, you have no idea what Claude is doing — thinking? waiting? failed? done? The pet fixes that, then adds a memory brain, self-learning skills, and an ergonomics coach on top.
+  </p>
+
+  <div class="features">
+    <div class="feature">
+      <h3>Live reactions</h3>
+      <p>11 emotions triggered by real Claude Code hooks. Reading a file → cyan scanning eyes. Editing → blue sparkles. Bash → green arrow eyes. Success → 3 dings. Attention → 2 beeps. Failure → thud.</p>
+    </div>
+    <div class="feature">
+      <h3>Memory brain</h3>
+      <p>Every project you code in gets a local SQLite graph of decisions, conventions, fixes and gotchas. Each new Claude Code session gets a ranked ≤800-token context injection so Claude picks up where you left off.</p>
+    </div>
+    <div class="feature">
+      <h3>Self-learning skills</h3>
+      <p>Patterns reinforced 2× get promoted into real Claude Code SKILL.md files at <code>~/.claude/skills/</code>. Levels compound: hatchling → apprentice → senior → ponytail. Expertise carries across projects.</p>
+    </div>
+    <div class="feature">
+      <h3>Ergonomics coach</h3>
+      <p>Counts only real work time (not lunch). Prompts eye-breaks every 20 min, chin tucks every 30 min, wrist circles every 45 min. The pet <b>demonstrates each exercise</b> — you mirror it.</p>
+    </div>
+    <div class="feature">
+      <h3>Futuristic HUD dashboard</h3>
+      <p>Click the pet to open the memory/ergonomics dashboard. Deep navy, cyan hairlines, corner brackets, monospace data readouts, force-directed animated graph, circular gauge meters.</p>
+    </div>
+    <div class="feature">
+      <h3>100% local</h3>
+      <p>Zero cloud, zero uploads, zero telemetry. Everything lives in <code>~/.claude/claude-pet/memory.sqlite</code> on your machine, gitignored by default. 11 secret-pattern regexes scrub anything sensitive before write.</p>
+    </div>
+  </div>
+
+  <div class="emotions-wrap" style="margin-top: 32px">
+    <img src="assets/emotions.png" alt="9 of the 11 pet emotions rendered" />
+    <p style="color: var(--text-muted); font-size: 13px; margin-top: 12px; font-family: var(--mono); letter-spacing: 1px;">
+      9 OF 11 EMOTIONS — IDLE · THINKING · READING · WRITING · RUNNING · SUCCESS · ERROR · CURIOUS · PROUD
+    </p>
+  </div>
+</section>
+
+<section id="ergonomics">
+  <h2><span class="marker">◆</span>The pet demonstrates every exercise</h2>
+  <p class="lede">
+    Break-reminder apps fail two ways: they fire when you're not working, and they don't tell you what to do. Claude Pet counts only real Claude Code activity, and when a break's due, the mascot performs the exact motion — you mirror it. Native SMIL animation, all rendered live below.
+  </p>
+
+  <div class="ergo-grid">
+    <div class="ergo-card">
+      <object data="assets/pet-eye-break.svg" type="image/svg+xml"></object>
+      <div class="caption">EYE BREAK · 20-20-20</div>
+    </div>
+    <div class="ergo-card">
+      <object data="assets/pet-chin-tuck.svg" type="image/svg+xml"></object>
+      <div class="caption">CHIN TUCK · NECK</div>
+    </div>
+    <div class="ergo-card">
+      <object data="assets/pet-wrist-circles.svg" type="image/svg+xml"></object>
+      <div class="caption">WRIST CIRCLES · RSI</div>
+    </div>
+    <div class="ergo-card">
+      <object data="assets/pet-reach-high.svg" type="image/svg+xml"></object>
+      <div class="caption">REACH HIGH · POSTURE</div>
+    </div>
+    <div class="ergo-card">
+      <object data="assets/pet-water-break.svg" type="image/svg+xml"></object>
+      <div class="caption">WATER · HYDRATION</div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <h2><span class="marker">◆</span>Install in 60 seconds</h2>
+  <p class="lede">
+    macOS, Windows, and Linux — one command each. The installer creates a permission-safe venv at <code>~/.claude-pet-venv/</code>, wires Claude Code hooks, and starts the pet. From then on, every new Claude Code session auto-launches it.
+  </p>
+
+  <div class="install-block">
+
+    <div class="install-card">
+      <h3>macOS</h3>
+      <p>Requires Python 3.10+ and Homebrew (the installer will install Homebrew for you if missing).</p>
+      <pre class="code"><button class="copy" data-clip>Copy</button>git clone https://github.com/nikhilagrima/claude-pet.git ~/claude-pet
+cd ~/claude-pet
+bash install.command</pre>
+    </div>
+
+    <div class="install-card">
+      <h3>Linux</h3>
+      <p>Requires Python 3.10+. The installer will sudo-install Cairo via apt / dnf / pacman.</p>
+      <pre class="code"><button class="copy" data-clip>Copy</button>git clone https://github.com/nikhilagrima/claude-pet.git ~/claude-pet
+cd ~/claude-pet
+bash install.sh</pre>
+    </div>
+
+    <div class="install-card">
+      <h3>Windows (PowerShell)</h3>
+      <p>Requires Python 3.10+. Cairo ships inside the cairosvg wheel — no extra install.</p>
+      <pre class="code"><button class="copy" data-clip>git clone https://github.com/nikhilagrima/claude-pet.git $HOME\claude-pet
+cd $HOME\claude-pet
+.\install.bat</pre>
+    </div>
+
+    <div class="install-card">
+      <h3>Prefer a pre-built binary?</h3>
+      <p>Grab the .app / .exe / Linux binary from the latest GitHub release. Drag to /Applications (macOS) or run directly.</p>
+      <a class="btn primary" href="https://github.com/nikhilagrima/claude-pet/releases/latest" target="_blank" rel="noopener">
+        Latest release binaries ↓
+      </a>
+    </div>
+
+  </div>
+</section>
+
+<section id="tech">
+  <h2><span class="marker">◆</span>Under the hood</h2>
+  <div class="features">
+    <div class="feature">
+      <h3>Cross-platform Qt window</h3>
+      <p>PySide6 frameless, translucent, always-on-top. Works on macOS (accessory-app mode, no Dock icon), Windows, Linux (X11 + Wayland compositors).</p>
+    </div>
+    <div class="feature">
+      <h3>Live SVG mascot</h3>
+      <p>Every emotion is generated from bot_svg.py — dynamic colors, breathing, blink cycles, tier badges. Ergonomics animations are native SMIL, rendered by QSvgWidget.</p>
+    </div>
+    <div class="feature">
+      <h3>Local Flask :5050</h3>
+      <p>Tiny state server the pet polls at 2.5 Hz. Serves /state, /version, /break, /shutdown. Never talks to the network — localhost only.</p>
+    </div>
+    <div class="feature">
+      <h3>SQLite memory + FTS5</h3>
+      <p>Additive migrations from every version. Ranked injection = weight × recency × BM25 match. Skills promoted to real Claude Code skills at 2× reinforcement.</p>
+    </div>
+    <div class="feature">
+      <h3>Idempotent installer</h3>
+      <p>Safe to re-run. Detects broken hook paths and self-heals via <code>claude-pet doctor</code>. Self-replaces stale versions on upgrade so restarts aren't manual.</p>
+    </div>
+    <div class="feature">
+      <h3>83 tests, 3 platforms</h3>
+      <p>Every push runs the full suite on macOS + Windows + Linux CI. Every release tag builds .app / .exe / Linux binaries and attaches them to a GitHub release automatically.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Made with 💙 by <a href="https://byteflow.bot" target="_blank" rel="noopener">Byteflow.bot</a> ·
+  MIT licensed ·
+  <a href="https://github.com/nikhilagrima/claude-pet" target="_blank" rel="noopener">github.com/nikhilagrima/claude-pet</a>
+  <br /><br />
+  <span style="color: var(--text-muted); font-size: 11px;">
+    Ergonomics guidance based on AOA, HSE 2025, CCOHS, and OSHA published research. Not medical advice.
+  </span>
+</footer>
+
+<script>
+  // Copy-to-clipboard on install snippets.
+  document.querySelectorAll('button.copy[data-clip]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const pre = btn.parentElement;
+      const text = pre.innerText.replace(/^Copy\s*/, '').replace(/^Copied\s*/, '');
+      try {
+        await navigator.clipboard.writeText(text.trim());
+        const original = btn.textContent;
+        btn.textContent = 'Copied';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = original; btn.classList.remove('copied'); }, 1200);
+      } catch (e) {
+        btn.textContent = 'Press ⌘C';
+      }
+    });
+  });
+</script>
+</body>
+</html>

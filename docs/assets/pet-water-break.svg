@@ -1,0 +1,67 @@
+<svg style="--bf-chip:#111111;--bf-chip-border:#1F1F1F;--bf-text:#FFFFFF;--bf-text2:#B8B8B8;--bf-muted:#A0A0A0;--acc-blue:#5B8DEF;--acc-cyan:#53D8E8;--acc-green:#4ADE80;--acc-red:#F87171" viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, sans-serif">
+  <defs>
+    <radialGradient id="fgW" cx="35%" cy="28%" r="95%">
+      <stop offset="0%" stop-color="#262A4A"/>
+      <stop offset="55%" stop-color="#14162B"/>
+      <stop offset="100%" stop-color="#080910"/>
+    </radialGradient>
+  </defs>
+  <rect x="60" y="8" width="100" height="24" rx="12" style="fill:var(--bf-chip);stroke:var(--bf-chip-border)"/>
+  <text x="110" y="24" text-anchor="middle" font-size="13" font-weight="700" style="fill:var(--bf-text)">Water break!</text>
+
+  <g transform="translate(180 50)">
+    <path d="M0 -11 C6 -1 9 4 9 9 A9 9 0 1 1 -9 9 C-9 4 -6 -1 0 -11 Z" style="fill:var(--acc-cyan)">
+      <animate attributeName="opacity" values="1;0.25;1" dur="1.6s" repeatCount="indefinite"/>
+    </path>
+  </g>
+
+  <g>
+    <animateTransform attributeName="transform" type="translate" values="0 0;0 1.5;0 0" dur="3s" repeatCount="indefinite"/>
+    <rect x="50" y="78" width="120" height="84" rx="42" fill="#2A2D35"/>
+    <rect x="55" y="83" width="110" height="74" rx="37" fill="url(#fgW)" stroke="#C9CCD1" stroke-width="3"/>
+    <path d="M82 92 C104 84 138 86 152 98 C158 103 158 114 150 117 C142 120 136 112 124 105 C110 97 92 96 82 92 Z" fill="#9DA1A9" opacity="0.85"/>
+    <path d="M84 90 C106 82 140 84 154 97" stroke="#E8EAEE" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.9"/>
+    <ellipse cx="76" cy="146" rx="9" ry="4" fill="#8A8E96" opacity="0.5" transform="rotate(-18 76 146)"/>
+    <!-- eyes: cyan dots normally, green happy chevrons while gulping -->
+    <g style="stroke:var(--acc-cyan)" stroke-width="0" fill="none">
+      <animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.25;0.35;0.6;0.75;1" dur="4s" repeatCount="indefinite"/>
+      <circle cx="92" cy="124" r="6" style="fill:var(--acc-cyan)"/>
+      <circle cx="128" cy="124" r="6" style="fill:var(--acc-cyan)"/>
+    </g>
+    <g fill="none" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" style="stroke:var(--acc-green)">
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.25;0.35;0.6;0.75;1" dur="4s" repeatCount="indefinite"/>
+      <path d="M84 128 L92 118 L100 128"/>
+      <path d="M120 128 L128 118 L136 128"/>
+    </g>
+
+    <!-- left arm rests on the visor -->
+    <g stroke-linecap="round">
+      <line x1="56" y1="126" x2="38" y2="146" stroke="#2A2D35" stroke-width="13"/>
+      <line x1="56" y1="126" x2="38" y2="146" stroke="#C9CCD1" stroke-width="9"/>
+    </g>
+    <!-- right arm sweeps up to bring the glass to the front -->
+    <g stroke-linecap="round">
+      <animateTransform attributeName="transform" type="rotate"
+        values="0 164 126; 100 164 126; 100 164 126; 0 164 126; 0 164 126"
+        keyTimes="0;0.25;0.6;0.85;1" dur="4s" repeatCount="indefinite"/>
+      <line x1="164" y1="126" x2="184" y2="146" stroke="#2A2D35" stroke-width="13"/>
+      <line x1="164" y1="126" x2="184" y2="146" stroke="#C9CCD1" stroke-width="9"/>
+    </g>
+  </g>
+
+  <!-- glass travels to the visor front and tips; water drains, then refills -->
+  <g>
+    <animateTransform attributeName="transform" type="translate"
+      values="0 0; -52 -16; -52 -16; 0 0; 0 0" keyTimes="0;0.25;0.6;0.85;1" dur="4s" repeatCount="indefinite"/>
+    <animateTransform attributeName="transform" type="rotate" additive="sum"
+      values="0 176 138; -25 176 138; -25 176 138; 0 176 138; 0 176 138" keyTimes="0;0.25;0.6;0.85;1" dur="4s" repeatCount="indefinite"/>
+    <rect x="176" y="138" width="17" height="24" rx="3" fill="none" stroke-width="2.5" style="stroke:var(--bf-muted)"/>
+    <rect x="178.5" y="145" width="12" height="14.5" rx="2" opacity="0.9" style="fill:var(--acc-cyan)">
+      <animate attributeName="y" values="145;145;157;157;145" keyTimes="0;0.3;0.6;0.99;1" dur="4s" repeatCount="indefinite"/>
+      <animate attributeName="height" values="14.5;14.5;2.5;2.5;14.5" keyTimes="0;0.3;0.6;0.99;1" dur="4s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+
+  <rect x="22" y="196" width="176" height="20" rx="10" style="fill:var(--bf-chip);stroke:var(--bf-chip-border)"/>
+  <text x="110" y="210" text-anchor="middle" font-size="10.5" style="fill:var(--bf-text2)">Sip regularly — small amounts through the day</text>
+</svg>

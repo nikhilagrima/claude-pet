@@ -1,0 +1,50 @@
+<svg style="--bf-chip:#111111;--bf-chip-border:#1F1F1F;--bf-text:#FFFFFF;--bf-text2:#B8B8B8;--bf-muted:#A0A0A0;--acc-blue:#5B8DEF;--acc-cyan:#53D8E8;--acc-green:#4ADE80;--acc-red:#F87171" viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, sans-serif">
+  <defs>
+    <radialGradient id="fgR" cx="35%" cy="28%" r="95%">
+      <stop offset="0%" stop-color="#262A4A"/>
+      <stop offset="55%" stop-color="#14162B"/>
+      <stop offset="100%" stop-color="#080910"/>
+    </radialGradient>
+  </defs>
+  <rect x="58" y="8" width="104" height="24" rx="12" style="fill:var(--bf-chip);stroke:var(--bf-chip-border)"/>
+  <text x="110" y="24" text-anchor="middle" font-size="13" font-weight="700" style="fill:var(--bf-text)">Wrist circles</text>
+
+  <g>
+    <animateTransform attributeName="transform" type="translate" values="0 0;0 1.5;0 0" dur="3s" repeatCount="indefinite"/>
+    <rect x="50" y="78" width="120" height="84" rx="42" fill="#2A2D35"/>
+    <rect x="55" y="83" width="110" height="74" rx="37" fill="url(#fgR)" stroke="#C9CCD1" stroke-width="3"/>
+    <path d="M82 92 C104 84 138 86 152 98 C158 103 158 114 150 117 C142 120 136 112 124 105 C110 97 92 96 82 92 Z" fill="#9DA1A9" opacity="0.85"/>
+    <path d="M84 90 C106 82 140 84 154 97" stroke="#E8EAEE" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.9"/>
+    <ellipse cx="76" cy="146" rx="9" ry="4" fill="#8A8E96" opacity="0.5" transform="rotate(-18 76 146)"/>
+    <!-- eyes track the fists -->
+    <circle cx="92" cy="124" r="6" style="fill:var(--acc-blue)">
+      <animate attributeName="cy" values="122;127;122" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="128" cy="124" r="6" style="fill:var(--acc-blue)">
+      <animate attributeName="cy" values="122;127;122" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+    <!-- both arms straight out -->
+    <g stroke-linecap="round">
+      <line x1="56" y1="120" x2="32" y2="120" stroke="#2A2D35" stroke-width="13"/>
+      <line x1="56" y1="120" x2="32" y2="120" stroke="#C9CCD1" stroke-width="9"/>
+      <line x1="164" y1="120" x2="188" y2="120" stroke="#2A2D35" stroke-width="13"/>
+      <line x1="164" y1="120" x2="188" y2="120" stroke="#C9CCD1" stroke-width="9"/>
+    </g>
+    <circle cx="32" cy="120" r="11" fill="none" stroke-width="1.5" stroke-dasharray="3 4" opacity="0.7" style="stroke:var(--acc-blue)"/>
+    <circle cx="188" cy="120" r="11" fill="none" stroke-width="1.5" stroke-dasharray="3 4" opacity="0.7" style="stroke:var(--acc-blue)"/>
+    <g>
+      <animateTransform attributeName="transform" type="rotate"
+        values="0 32 120; -1440 32 120; -1440 32 120; 0 32 120; 0 32 120" keyTimes="0;0.44;0.5;0.94;1" dur="12s" repeatCount="indefinite"/>
+      <circle cx="21" cy="120" r="8" fill="#C9CCD1" stroke="#2A2D35" stroke-width="2"/>
+    </g>
+    <g>
+      <animateTransform attributeName="transform" type="rotate"
+        values="0 188 120; 1440 188 120; 1440 188 120; 0 188 120; 0 188 120" keyTimes="0;0.44;0.5;0.94;1" dur="12s" repeatCount="indefinite"/>
+      <circle cx="199" cy="120" r="8" fill="#C9CCD1" stroke="#2A2D35" stroke-width="2"/>
+    </g>
+  </g>
+
+  <rect x="30" y="192" width="160" height="24" rx="12" style="fill:var(--bf-chip);stroke:var(--bf-chip-border)"/>
+  <text x="110" y="202" text-anchor="middle" font-size="9.5" style="fill:var(--bf-text2)">Both fists out, opposite circles</text>
+  <text x="110" y="212" text-anchor="middle" font-size="9.5" style="fill:var(--bf-text2)">&#215;4 one way, then &#215;4 reversed</text>
+</svg>

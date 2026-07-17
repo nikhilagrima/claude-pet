@@ -1,0 +1,48 @@
+<svg style="--bf-chip:#111111;--bf-chip-border:#1F1F1F;--bf-text:#FFFFFF;--bf-text2:#B8B8B8;--bf-muted:#A0A0A0;--acc-blue:#5B8DEF;--acc-cyan:#53D8E8;--acc-green:#4ADE80;--acc-red:#F87171" viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, sans-serif">
+  <defs>
+    <radialGradient id="fgH" cx="35%" cy="28%" r="95%">
+      <stop offset="0%" stop-color="#262A4A"/>
+      <stop offset="55%" stop-color="#14162B"/>
+      <stop offset="100%" stop-color="#080910"/>
+    </radialGradient>
+  </defs>
+  <rect x="64" y="8" width="92" height="24" rx="12" style="fill:var(--bf-chip);stroke:var(--bf-chip-border)"/>
+  <text x="110" y="24" text-anchor="middle" font-size="13" font-weight="700" style="fill:var(--bf-text)">Reach high</text>
+
+  <g>
+    <animateTransform attributeName="transform" type="translate"
+      values="0 0; 0 -8; 0 -8; 0 0; 0 0" keyTimes="0;0.25;0.6;0.8;1" dur="5s" repeatCount="indefinite"/>
+    <!-- both arms sweep overhead, hold, return -->
+    <g stroke-linecap="round">
+      <animateTransform attributeName="transform" type="rotate"
+        values="0 58 128; 150 58 128; 150 58 128; 0 58 128; 0 58 128" keyTimes="0;0.25;0.6;0.8;1" dur="5s" repeatCount="indefinite"/>
+      <line x1="58" y1="128" x2="40" y2="150" stroke="#2A2D35" stroke-width="13"/>
+      <line x1="58" y1="128" x2="40" y2="150" stroke="#C9CCD1" stroke-width="9"/>
+    </g>
+    <g stroke-linecap="round">
+      <animateTransform attributeName="transform" type="rotate"
+        values="0 162 128; -150 162 128; -150 162 128; 0 162 128; 0 162 128" keyTimes="0;0.25;0.6;0.8;1" dur="5s" repeatCount="indefinite"/>
+      <line x1="162" y1="128" x2="180" y2="150" stroke="#2A2D35" stroke-width="13"/>
+      <line x1="162" y1="128" x2="180" y2="150" stroke="#C9CCD1" stroke-width="9"/>
+    </g>
+    <rect x="50" y="78" width="120" height="84" rx="42" fill="#2A2D35"/>
+    <rect x="55" y="83" width="110" height="74" rx="37" fill="url(#fgH)" stroke="#C9CCD1" stroke-width="3"/>
+    <path d="M82 92 C104 84 138 86 152 98 C158 103 158 114 150 117 C142 120 136 112 124 105 C110 97 92 96 82 92 Z" fill="#9DA1A9" opacity="0.85"/>
+    <path d="M84 90 C106 82 140 84 154 97" stroke="#E8EAEE" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.9"/>
+    <ellipse cx="76" cy="146" rx="9" ry="4" fill="#8A8E96" opacity="0.5" transform="rotate(-18 76 146)"/>
+    <!-- eyes: dots normally, closed green chevrons during the hold -->
+    <g>
+      <animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.25;0.35;0.6;0.75;1" dur="5s" repeatCount="indefinite"/>
+      <circle cx="92" cy="124" r="6" style="fill:var(--acc-blue)"/>
+      <circle cx="128" cy="124" r="6" style="fill:var(--acc-blue)"/>
+    </g>
+    <g fill="none" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" style="stroke:var(--acc-green)">
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.25;0.35;0.6;0.75;1" dur="5s" repeatCount="indefinite"/>
+      <path d="M84 128 L92 118 L100 128"/>
+      <path d="M120 128 L128 118 L136 128"/>
+    </g>
+  </g>
+
+  <rect x="34" y="196" width="152" height="20" rx="10" style="fill:var(--bf-chip);stroke:var(--bf-chip-border)"/>
+  <text x="110" y="210" text-anchor="middle" font-size="10" style="fill:var(--bf-text2)">Arms overhead, stretch tall &#183; hold &#183; &#215;2</text>
+</svg>
