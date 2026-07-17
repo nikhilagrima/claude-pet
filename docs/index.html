@@ -144,14 +144,20 @@
   .install-card p { margin: 0 0 12px; color: var(--text-dim); font-size: 14px; line-height: 1.55; }
   pre.code {
     background: var(--bg-deep); border: 1px solid var(--border); border-radius: 8px;
-    padding: 14px 16px; font-family: var(--mono); font-size: 12px;
-    color: var(--cyan-hi); overflow-x: auto; margin: 0 0 12px; position: relative;
+    /* Reserve space at the top so the absolutely-positioned Copy button
+       never sits on top of the first line of code. */
+    padding: 38px 16px 14px 16px;
+    font-family: var(--mono); font-size: 12px; line-height: 1.7;
+    color: var(--cyan-hi); margin: 0 0 12px; position: relative;
+    /* Wrap long lines within the card instead of forcing horizontal scroll. */
+    white-space: pre-wrap; word-break: break-word;
   }
   pre.code button.copy {
     position: absolute; top: 8px; right: 8px;
     background: var(--bg-card); border: 1px solid var(--border); color: var(--text-dim);
-    font-family: var(--mono); font-size: 10px; padding: 4px 8px; border-radius: 6px;
+    font-family: var(--mono); font-size: 10px; padding: 4px 10px; border-radius: 6px;
     cursor: pointer; text-transform: uppercase; letter-spacing: 1px;
+    z-index: 2;
   }
   pre.code button.copy:hover { color: var(--cyan); border-color: var(--cyan); }
   pre.code button.copy.copied { color: var(--green); border-color: var(--green); }
@@ -325,7 +331,7 @@ bash install.sh</pre>
     <div class="install-card">
       <h3>Windows (PowerShell)</h3>
       <p>Requires Python 3.10+. Cairo ships inside the cairosvg wheel — no extra install.</p>
-      <pre class="code"><button class="copy" data-clip>git clone https://github.com/nikhilagrima/claude-pet.git $HOME\claude-pet
+      <pre class="code"><button class="copy" data-clip>Copy</button>git clone https://github.com/nikhilagrima/claude-pet.git $HOME\claude-pet
 cd $HOME\claude-pet
 .\install.bat</pre>
     </div>
@@ -397,13 +403,17 @@ cd $HOME\claude-pet
 </footer>
 
 <script>
-  // Copy-to-clipboard on install snippets.
+  // Copy-to-clipboard on install snippets. Robust extraction: hide the
+  // button, read innerText, restore — no fragile string-stripping.
   document.querySelectorAll('button.copy[data-clip]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const pre = btn.parentElement;
-      const text = pre.innerText.replace(/^Copy\s*/, '').replace(/^Copied\s*/, '');
+      const prevDisplay = btn.style.display;
+      btn.style.display = 'none';
+      const text = pre.innerText.trim();
+      btn.style.display = prevDisplay;
       try {
-        await navigator.clipboard.writeText(text.trim());
+        await navigator.clipboard.writeText(text);
         const original = btn.textContent;
         btn.textContent = 'Copied';
         btn.classList.add('copied');
