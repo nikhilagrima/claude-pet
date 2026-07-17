@@ -72,10 +72,34 @@ def classify(event: dict[str, Any]) -> dict[str, Any] | None:
     }
 
     if et == "PushEvent":
-        n = len(payload.get("commits") or [])
+        # GitHub's /events endpoint truncates payload for many repos: `commits`
+        # array is empty, `size`/`distinct_size` may be null. Fall through the
+        # sources — try distinct_size, size, then commits length. If ALL zero
+        # but the payload has a `head` SHA, that IS the commit — show it
+        # rather than a misleading "0 new commits".
+        distinct = payload.get("distinct_size")
+        size = payload.get("size")
+        arr_len = len(payload.get("commits") or [])
+        n = distinct if isinstance(distinct, int) and distinct > 0 else (
+            size if isinstance(size, int) and size > 0 else arr_len
+        )
         ref = payload.get("ref", "").split("/")[-1] or "?"
-        base["title"] = f"{n} new commit{'s' if n != 1 else ''} on {ref}" + (
-            f" by @{actor}" if actor else "")
+        head = (payload.get("head") or "")[:7]
+        who = f" by @{actor}" if actor else ""
+        if n > 0:
+            base["title"] = f"{n} new commit{'s' if n != 1 else ''} on {ref}{who}"
+        elif head:
+            base["title"] = f"New push to {ref}{who}  ({head})"
+        else:
+            base["title"] = f"New push to {ref}{who}"
+        # Link to the compare view when we have before/head; otherwise commit
+        # page for head; otherwise the repo page.
+        before = (payload.get("before") or "")[:40]
+        repo_full = _repo_full(event)
+        if repo_full and payload.get("head") and before:
+            base["url"] = f"https://github.com/{repo_full}/compare/{before}...{payload['head']}"
+        elif repo_full and payload.get("head"):
+            base["url"] = f"https://github.com/{repo_full}/commit/{payload['head']}"
         base["reaction"] = "curious"
         return base
 
