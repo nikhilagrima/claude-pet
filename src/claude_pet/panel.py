@@ -1109,25 +1109,84 @@ class GithubTab(QWidget):
         self.layout.setContentsMargins(14, 14, 14, 14)
         self.layout.setSpacing(10)
 
-        # Row 1: add repo
+        # ── Add-repo panel ── labeled, highlighted, obviously interactive.
+        # Users kept missing this input entirely — now we frame it as a call
+        # to action with a header, a hint line, cyan focus glow.
+        add_panel = QWidget()
+        add_panel.setObjectName("addPanel")
+        add_panel.setStyleSheet(
+            f"#addPanel {{ "
+            f"background: {NEON['bg_card']}; "
+            f"border: 1px solid {NEON['border_hi']}; "
+            f"border-radius: 10px; padding: 10px; "
+            f"}}"
+        )
+        add_wrap = QVBoxLayout(add_panel)
+        add_wrap.setContentsMargins(12, 10, 12, 12)
+        add_wrap.setSpacing(6)
+
+        # Header: makes it obvious this box is where you add things.
+        header = QLabel(
+            f"<span style='color:{NEON['cyan']}; font-family:Menlo; "
+            f"font-size:11px; letter-spacing:1.5px'>▸ ADD A REPO TO WATCH</span>"
+        )
+        add_wrap.addWidget(header)
+
+        # Input + buttons row.
         add_row = QHBoxLayout()
-        add_row.setSpacing(6)
+        add_row.setSpacing(8)
         self.add_input = QLineEdit()
-        self.add_input.setPlaceholderText(
-            "owner/repo   (multiple ok: facebook/react, vercel/next.js torvalds/linux)"
+        self.add_input.setPlaceholderText("owner/repo   e.g.  facebook/react")
+        self.add_input.setClearButtonEnabled(True)
+        # Bigger click target + strong focus ring so people know they can type here.
+        self.add_input.setMinimumHeight(34)
+        self.add_input.setStyleSheet(
+            f"QLineEdit {{ "
+            f"background: {NEON['bg_deep']}; "
+            f"color: {NEON['text']}; "
+            f"border: 1.5px solid {NEON['border']}; "
+            f"border-radius: 8px; padding: 6px 10px; "
+            f"font-family: Menlo, 'JetBrains Mono', monospace; font-size: 13px; "
+            f"selection-background-color: {NEON['cyan']}; "
+            f"selection-color: {NEON['bg_deep']}; "
+            f"}}"
+            f"QLineEdit:focus {{ "
+            f"border: 1.5px solid {NEON['cyan']}; "
+            f"background: {NEON['bg_panel']}; "
+            f"}}"
         )
         self.add_input.returnPressed.connect(self._add_repo)
         add_row.addWidget(self.add_input, 1)
+
         self.add_btn = QPushButton("+ Watch")
         self.add_btn.setObjectName("primary")
         self.add_btn.setCursor(Qt.PointingHandCursor)
+        self.add_btn.setMinimumHeight(34)
         self.add_btn.clicked.connect(self._add_repo)
         add_row.addWidget(self.add_btn)
+
         self.check_btn = QPushButton("Poll now")
         self.check_btn.setCursor(Qt.PointingHandCursor)
+        self.check_btn.setMinimumHeight(34)
         self.check_btn.clicked.connect(self._poll_now)
         add_row.addWidget(self.check_btn)
-        self.layout.addLayout(add_row)
+        add_wrap.addLayout(add_row)
+
+        # Hint line — tells you multi-add works without cluttering the placeholder.
+        hint = QLabel(
+            f"<span style='color:{NEON['text_muted']}; font-size:11px'>"
+            f"Type the GitHub slug and press <b>Enter</b>. "
+            f"Multiple ok — separate with a space or comma."
+            f"</span>"
+        )
+        hint.setWordWrap(True)
+        add_wrap.addWidget(hint)
+
+        self.layout.addWidget(add_panel)
+
+        # Auto-focus the input when the tab opens so people see the cursor
+        # blinking on the field they're meant to use.
+        QTimer.singleShot(50, self.add_input.setFocus)
 
         # Row 2: watched repos table
         self.watches_table = QTableWidget(0, 4)
