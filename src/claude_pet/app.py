@@ -166,6 +166,43 @@ class PetWindow(QWidget):
         self.timer.start(TICK_MS)
 
         threading.Thread(target=self._poll_loop, daemon=True).start()
+        threading.Thread(target=self._github_watch_loop, daemon=True).start()
+
+    def _github_watch_loop(self):
+        """Background poll of watched GitHub repos. Sleeps 30s between wakeups
+        and only actually hits the network when a repo is due per its interval.
+        Failures never bubble up — the pet must never crash on watcher errors."""
+        while True:
+            try:
+                from .github_watch import watcher as gh_watcher
+                gh_watcher.poll_all_due()
+            except Exception as exc:
+                print(f"[pet] github watcher error: {exc}")
+            time.sleep(30)
+
+    def _drain_github_alerts(self):
+        """Deliver at most one pending GitHub event as a pet reaction per tick.
+
+        Multiple events queue up naturally — each subsequent tick emits the
+        next one, so a burst of activity plays through instead of stacking.
+        """
+        try:
+            from .github_watch import storage as gh_storage
+            pending = gh_storage.pending_alerts()
+            if not pending:
+                return
+            ev = pending[0]
+            reaction = ev.get("reaction", "curious")
+            # Reaction → pet state + sound. States that already exist in bot_svg.
+            state_map = {"success": "success", "error": "error",
+                         "curious": "curious"}
+            self._set_state(state_map.get(reaction, "curious"), post=True)
+            sound_map = {"success": "success", "error": "error",
+                         "curious": "attention"}
+            self.sound.play(sound_map.get(reaction, "attention"))
+            gh_storage.mark_alerted(ev["id"])
+        except Exception as exc:
+            print(f"[pet] github alert delivery error: {exc}")
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -309,6 +346,11 @@ class PetWindow(QWidget):
                 and (self.frame_idx % 30 == 0):
             self._maybe_prompt_break()
             self._drain_break_queue()
+
+        # GitHub alert delivery — cheap DB read every ~3s; only fires the pet
+        # reaction when a new event is genuinely pending.
+        if self.frame_idx % 30 == 0:
+            self._drain_github_alerts()
 
     def _drain_break_queue(self):
         """Check /break for a CLI/menu-triggered request and open the overlay."""

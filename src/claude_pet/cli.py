@@ -325,6 +325,134 @@ def cmd_ergonomics(args):
     return 1
 
 
+def _parse_owner_repo(spec: str | None) -> tuple[str, str] | None:
+    if not spec or "/" not in spec:
+        return None
+    owner, _, repo = spec.partition("/")
+    owner, repo = owner.strip(), repo.strip()
+    if not owner or not repo:
+        return None
+    return owner, repo
+
+
+def _fmt_ago(iso: str | None) -> str:
+    if not iso:
+        return "never"
+    try:
+        from datetime import datetime, timezone
+        t = datetime.fromisoformat(iso)
+        delta = (datetime.now(timezone.utc) - t).total_seconds()
+    except Exception:
+        return iso
+    if delta < 60:
+        return f"{int(delta)}s ago"
+    if delta < 3600:
+        return f"{int(delta / 60)}m ago"
+    if delta < 86400:
+        return f"{int(delta / 3600)}h ago"
+    return f"{int(delta / 86400)}d ago"
+
+
+def cmd_github(args):
+    """`claude-pet github <sub>` — watch/unwatch/list/events/check/token/enable/disable."""
+    from .github_watch import config as gh_config, storage, watcher
+    sub = getattr(args, "gh_sub", None) or "list"
+    arg = getattr(args, "gh_arg", None)
+
+    if sub == "list":
+        rows = storage.list_watches()
+        if not rows:
+            print("No repos watched yet. Add one with:  claude-pet github watch owner/repo")
+            return 0
+        print(f"{'REPO':<40} {'ENABLED':<8} {'LAST CHECK':<14} {'STATUS'}")
+        for r in rows:
+            slug = f"{r['owner']}/{r['repo']}"
+            enabled = "yes" if r["enabled"] else "no"
+            checked = _fmt_ago(r["last_checked"])
+            status = r["last_error"] or "ok"
+            print(f"{slug:<40} {enabled:<8} {checked:<14} {status}")
+        return 0
+
+    if sub == "watch":
+        or_repo = _parse_owner_repo(arg)
+        if not or_repo:
+            print("usage: claude-pet github watch owner/repo")
+            return 2
+        w = storage.add_watch(*or_repo)
+        print(f"[claude-pet] watching {w['owner']}/{w['repo']} "
+              f"(id={w['id']}). Poll interval: {gh_config.poll_interval_s()}s.")
+        return 0
+
+    if sub == "unwatch":
+        or_repo = _parse_owner_repo(arg)
+        if not or_repo:
+            print("usage: claude-pet github unwatch owner/repo")
+            return 2
+        ok = storage.remove_watch(*or_repo)
+        print(f"[claude-pet] {'removed' if ok else 'no such watch'}: {arg}")
+        return 0 if ok else 1
+
+    if sub in ("enable", "disable"):
+        or_repo = _parse_owner_repo(arg)
+        if not or_repo:
+            print(f"usage: claude-pet github {sub} owner/repo")
+            return 2
+        ok = storage.set_enabled(*or_repo, sub == "enable")
+        print(f"[claude-pet] {'ok' if ok else 'no such watch'}: {arg} {sub}d")
+        return 0 if ok else 1
+
+    if sub == "events":
+        limit = getattr(args, "limit", 20)
+        rows = storage.recent_events(limit=limit)
+        if not rows:
+            print("No events yet. Try:  claude-pet github check")
+            return 0
+        for r in rows:
+            mark = {"success": "+", "error": "!", "curious": "?", "none": "."}.get(
+                r["reaction"], " "
+            )
+            slug = f"{r['owner']}/{r['repo']}"
+            print(f"[{mark}] {_fmt_ago(r['seen_at']):>8}  {slug:<28} {r['title']}")
+            if r.get("url"):
+                print(f"     -> {r['url']}")
+        return 0
+
+    if sub == "check":
+        stats = watcher.force_poll_all()
+        if not stats:
+            if not gh_config.enabled():
+                print("[claude-pet] GitHub watcher is disabled in config.")
+                return 0
+            print("[claude-pet] no repos to poll. Add one with:  "
+                  "claude-pet github watch owner/repo")
+            return 0
+        for s in stats:
+            err = s.get("error") or "ok"
+            print(f"  {s['owner']}/{s['repo']:<30} "
+                  f"status={s['status']} seen={s['seen']} new={s['new']} "
+                  f"rate={s.get('rate_remaining')}  {err}")
+        return 0
+
+    if sub == "token":
+        if getattr(args, "remove", False):
+            gh_config.set_token(None)
+            print("[claude-pet] stored GitHub token cleared.")
+            return 0
+        if not arg:
+            t = gh_config.token()
+            if t:
+                print(f"[claude-pet] token set ({'env override' if os.environ.get('CLAUDE_PET_GITHUB_TOKEN') or os.environ.get('GITHUB_TOKEN') else 'stored'}). Last 4 chars: …{t[-4:]}")
+            else:
+                print("[claude-pet] no token set. Pass one:  claude-pet github token <PAT>")
+            return 0
+        gh_config.set_token(arg)
+        print("[claude-pet] token stored in ~/.claude/claude-pet/config.json (chmod 600).")
+        return 0
+
+    print(f"unknown github subcommand: {sub}")
+    return 1
+
+
 def cmd_forget(args):
     """Delete every memory row for a project (CLI counterpart of the UI's
     'Delete selected project from memory' button)."""
@@ -620,6 +748,23 @@ def main():
     ergo_p.add_argument("snooze_min", nargs="?", type=int, default=30,
                         help="minutes to snooze (only for 'snooze')")
 
+    gh_p = sub.add_parser(
+        "github",
+        help="watch GitHub repos for commits, PRs, reviews, releases, deploys",
+    )
+    gh_p.add_argument(
+        "gh_sub", nargs="?", default="list",
+        choices=["watch", "unwatch", "list", "events", "check", "token", "enable", "disable"],
+    )
+    gh_p.add_argument(
+        "gh_arg", nargs="?", default=None,
+        help="owner/repo for watch|unwatch|enable|disable; token value for token; nothing for list|events|check",
+    )
+    gh_p.add_argument("--remove", action="store_true",
+                      help="only for 'token': clear the stored PAT")
+    gh_p.add_argument("--limit", type=int, default=20,
+                      help="only for 'events': max rows to show")
+
     ctx_p = sub.add_parser(
         "context",
         help="print current project's saved context (for pasting into a new session)",
@@ -656,6 +801,8 @@ def main():
         return cmd_ergonomics(args)
     if args.cmd == "update":
         return cmd_update(args)
+    if args.cmd == "github":
+        return cmd_github(args)
     return 0
 
 

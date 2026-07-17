@@ -28,11 +28,12 @@ class StorageV2Tests(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     # ------------------------------------------------------------------ fresh
-    def test_fresh_install_reports_version_2(self):
+    def test_fresh_install_reports_current_version(self):
         from claude_pet import memory
         with memory.connect() as conn:
             v = conn.execute("PRAGMA user_version").fetchone()[0]
-        self.assertEqual(v, 2)
+        self.assertEqual(v, memory.SCHEMA_VERSION)
+        self.assertGreaterEqual(v, 2)
 
     def test_fresh_install_has_all_v2_tables(self):
         from claude_pet import memory
@@ -91,7 +92,7 @@ class StorageV2Tests(unittest.TestCase):
         from claude_pet import memory
         with memory.connect() as c2:
             v = c2.execute("PRAGMA user_version").fetchone()[0]
-            self.assertEqual(v, 2)
+            self.assertEqual(v, memory.SCHEMA_VERSION)
             row = c2.execute(
                 "SELECT * FROM projects WHERE path = ?", ("/tmp/legacy",)
             ).fetchone()

@@ -20,8 +20,9 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QApplication, QDialog, QGraphicsDropShadowEffect, QGraphicsEllipseItem,
     QGraphicsLineItem, QGraphicsScene, QGraphicsSimpleTextItem, QGraphicsView,
-    QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMessageBox,
-    QPushButton, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
+    QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QListWidgetItem,
+    QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QTabWidget,
+    QVBoxLayout, QWidget,
 )
 
 from . import memory
@@ -911,6 +912,176 @@ class ErgonomicsTab(QWidget):
         self.label.setText(html)
 
 
+class GithubTab(QWidget):
+    """Add/remove watched repos, see recent activity, force a poll.
+
+    All GitHub I/O happens in background threads (see app.py). This tab is
+    read-mostly: it queries the local SQLite for what's known and pushes
+    tiny writes (add/remove/toggle) that the background poller picks up.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(14, 14, 14, 14)
+        self.layout.setSpacing(10)
+
+        # Row 1: add repo
+        add_row = QHBoxLayout()
+        add_row.setSpacing(6)
+        self.add_input = QLineEdit()
+        self.add_input.setPlaceholderText("owner/repo — e.g. facebook/react")
+        self.add_input.returnPressed.connect(self._add_repo)
+        add_row.addWidget(self.add_input, 1)
+        self.add_btn = QPushButton("+ Watch")
+        self.add_btn.setObjectName("primary")
+        self.add_btn.setCursor(Qt.PointingHandCursor)
+        self.add_btn.clicked.connect(self._add_repo)
+        add_row.addWidget(self.add_btn)
+        self.check_btn = QPushButton("Poll now")
+        self.check_btn.setCursor(Qt.PointingHandCursor)
+        self.check_btn.clicked.connect(self._poll_now)
+        add_row.addWidget(self.check_btn)
+        self.layout.addLayout(add_row)
+
+        # Row 2: watched repos table
+        self.watches_table = QTableWidget(0, 4)
+        self.watches_table.setHorizontalHeaderLabels(
+            ["REPO", "LAST CHECK", "STATUS", ""]
+        )
+        self.watches_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.watches_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.watches_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.watches_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.watches_table.verticalHeader().setVisible(False)
+        self.watches_table.setAlternatingRowColors(True)
+        self.watches_table.setSelectionMode(QTableWidget.NoSelection)
+        self.layout.addWidget(self.watches_table)
+
+        # Row 3: recent events feed
+        events_label = QLabel(
+            f"<span style='color:{NEON['text_muted']}; "
+            f"font-family:Menlo; font-size:11px'>RECENT ACTIVITY</span>"
+        )
+        self.layout.addWidget(events_label)
+        self.events_list = QListWidget()
+        self.events_list.itemActivated.connect(self._open_event_url)
+        self.layout.addWidget(self.events_list, 1)
+
+        self.footer = QLabel()
+        self.footer.setStyleSheet(f"color:{NEON['text_muted']}; font-size:11px;")
+        self.layout.addWidget(self.footer)
+
+        self.refresh()
+
+    # ---- actions ----------------------------------------------------------
+    def _add_repo(self):
+        from .github_watch import storage
+        raw = self.add_input.text().strip()
+        if "/" not in raw:
+            QMessageBox.warning(self, "Bad format",
+                                "Repo must look like  owner/repo")
+            return
+        owner, _, repo = raw.partition("/")
+        owner, repo = owner.strip(), repo.strip()
+        if not owner or not repo:
+            return
+        storage.add_watch(owner, repo)
+        self.add_input.clear()
+        self.refresh()
+
+    def _poll_now(self):
+        """Fire-and-forget: kick the background watcher via a short-lived thread
+        so the UI doesn't block on the network call."""
+        import threading
+        def _bg():
+            try:
+                from .github_watch import watcher
+                watcher.force_poll_all()
+            except Exception:
+                pass
+        threading.Thread(target=_bg, daemon=True).start()
+        # Refresh a moment later so results appear.
+        QTimer.singleShot(2000, self.refresh)
+
+    def _open_event_url(self, item):
+        url = item.data(Qt.UserRole)
+        if url:
+            import webbrowser
+            webbrowser.open(url)
+
+    def _remove_watch(self, owner: str, repo: str):
+        from .github_watch import storage
+        storage.remove_watch(owner, repo)
+        self.refresh()
+
+    # ---- rendering --------------------------------------------------------
+    def refresh(self):
+        from .github_watch import storage, config as gh_config
+        watches = storage.list_watches()
+        self.watches_table.setRowCount(len(watches))
+        for i, w in enumerate(watches):
+            slug = f"{w['owner']}/{w['repo']}"
+            self.watches_table.setItem(i, 0, QTableWidgetItem(slug))
+            self.watches_table.setItem(
+                i, 1, QTableWidgetItem(_fmt_ago(w.get("last_checked")))
+            )
+            status = w.get("last_error") or ("watching" if w["enabled"] else "paused")
+            self.watches_table.setItem(i, 2, QTableWidgetItem(status))
+            btn = QPushButton("×")
+            btn.setToolTip(f"Stop watching {slug}")
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setObjectName("danger")
+            btn.setMaximumWidth(28)
+            btn.clicked.connect(
+                lambda _=False, o=w["owner"], r=w["repo"]: self._remove_watch(o, r)
+            )
+            self.watches_table.setCellWidget(i, 3, btn)
+
+        events = storage.recent_events(limit=30)
+        self.events_list.clear()
+        for ev in events:
+            slug = f"{ev['owner']}/{ev['repo']}"
+            reaction = ev.get("reaction", "curious")
+            color = {
+                "success": NEON["green"], "error": NEON["red"],
+                "curious": NEON["cyan"], "none": NEON["text_muted"],
+            }.get(reaction, NEON["text"])
+            mark = {"success": "●", "error": "▲", "curious": "◆",
+                    "none": "○"}.get(reaction, "•")
+            text = f"{mark}  {_fmt_ago(ev['seen_at']):>8}   {slug:<30}  {ev['title']}"
+            item = QListWidgetItem(text)
+            item.setForeground(QColor(color))
+            if ev.get("url"):
+                item.setData(Qt.UserRole, ev["url"])
+                item.setToolTip("Double-click to open on GitHub")
+            self.events_list.addItem(item)
+
+        token_status = "token set" if gh_config.token() else "no token (60 req/hr)"
+        interval = gh_config.poll_interval_s()
+        self.footer.setText(
+            f"Poll interval: {interval}s   ·   {token_status}   ·   "
+            f"{len(watches)} watch{'es' if len(watches) != 1 else ''}"
+        )
+
+
+def _fmt_ago(iso: str | None) -> str:
+    if not iso:
+        return "never"
+    try:
+        t = datetime.fromisoformat(iso)
+        delta = (datetime.now(timezone.utc) - t).total_seconds()
+    except Exception:
+        return iso
+    if delta < 60:
+        return f"{int(delta)}s"
+    if delta < 3600:
+        return f"{int(delta / 60)}m"
+    if delta < 86400:
+        return f"{int(delta / 3600)}h"
+    return f"{int(delta / 86400)}d"
+
+
 class MemoryPanel(QDialog):
     """The floating panel that opens when you click the pet.
 
@@ -944,7 +1115,9 @@ class MemoryPanel(QDialog):
         self.skills = SkillsTab()
         self.stats = StatsTab()
         self.ergo = ErgonomicsTab()
-        for tab in (self.projects, self.graph, self.skills, self.stats, self.ergo):
+        self.github = GithubTab()
+        for tab in (self.projects, self.graph, self.skills, self.stats,
+                    self.ergo, self.github):
             tab.setAutoFillBackground(True)
             tab.setStyleSheet(
                 f"background: {NEON['bg_panel']}; border-radius: 10px;"
@@ -954,6 +1127,7 @@ class MemoryPanel(QDialog):
         tabs.addTab(self.skills, "SKILLS")
         tabs.addTab(self.stats, "STATS")
         tabs.addTab(self.ergo, "ERGO")
+        tabs.addTab(self.github, "GITHUB")
         layout.addWidget(tabs, 1)
 
         actions = QHBoxLayout()
@@ -985,3 +1159,4 @@ class MemoryPanel(QDialog):
         self.skills.refresh()
         self.stats.refresh()
         self.ergo.refresh()
+        self.github.refresh()

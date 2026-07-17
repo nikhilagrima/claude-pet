@@ -8,7 +8,7 @@
 
 _Made by [Byteflow.bot](https://byteflow.bot) — free & open source._
 
-**v0.4.x** — the pet that reacts to Claude Code (sound + emotions), **remembers every project you code in** (SQLite graph, ≤800-token context injection), **learns skills** from repeated patterns, **coaches your ergonomics** with animated exercises, and **shows it all in a futuristic HUD dashboard** when you click it.
+**v0.5.0** — the pet that reacts to Claude Code (sound + emotions), **remembers every project you code in**, **learns skills** from repeated patterns, **coaches your ergonomics** with animated exercises, **watches your GitHub repos** for commits/PRs/reviews/deploys, and **shows it all in a futuristic HUD dashboard** when you click it.
 
 [![tests](https://github.com/nikhilagrima/claude-pet/actions/workflows/test.yml/badge.svg)](https://github.com/nikhilagrima/claude-pet/actions/workflows/test.yml)
 [![build](https://github.com/nikhilagrima/claude-pet/actions/workflows/build.yml/badge.svg)](https://github.com/nikhilagrima/claude-pet/actions/workflows/build.yml)
@@ -38,10 +38,11 @@ It's a small robot mascot that floats in the bottom-right corner of your screen 
 
 You always know what's happening — even when you can't see the terminal.
 
-### ✨ What's new in v0.4.x
+### ✨ What's new in v0.5.0
 
 | Version | Feature |
 |---|---|
+| **v0.5.0** | **GitHub Repo Watcher** — commits, PRs, PR reviews, releases, CI runs, and deploy status alerts for any repo (no webhooks, ETag-cached polling, optional PAT) |
 | **v0.4.6** | Overlay chrome deduplicated — no more double titles/countdowns |
 | **v0.4.5** | Ergonomics SVG accents now render (monitors, water glass, arrows) — CSS custom-property inliner |
 | **v0.4.4** | Clean minimal HUD dashboard — halo/scanline removed, larger readable type |
@@ -54,7 +55,39 @@ You always know what's happening — even when you can't see the terminal.
 | **v0.3.1** | Skills land in Claude Code's discovery path (`~/.claude/skills/`) so they actually load |
 | **v0.3.0** | Memory brain — SQLite graph, `.ua` ingest, ranked context injection, self-learning skills |
 
-83 tests across 3 platforms (macOS / Windows / Linux), all green.
+112 tests across 3 platforms (macOS / Windows / Linux), all green.
+
+### 👀 v0.5.0 — GitHub Repo Watcher
+
+Add any GitHub repo — public or private (with a token) — and the pet will notify you the moment something happens on it:
+
+- **New commits** → curious face + attention beeps ("3 new commits on main by @octocat")
+- **PRs opened / merged / closed** → success or error reactions
+- **PR reviews** — approved / changes-requested / commented → distinct sounds
+- **New releases** → success dings ("Release v1.2.0 published")
+- **CI runs** (GitHub Actions) — pass / fail / cancel → matched reactions
+- **Deploy status** — success or failure per environment
+- **Issues opened** → curious poke
+
+**Design highlights:**
+- **Polling, not webhooks** — the pet is a local desktop app, no public endpoint required
+- **ETag caching** — quiet repos cost 0 rate-limit budget after the first poll
+- **Rate-limit safe** — 60/hr unauthenticated (fine for 5 repos at 5-min interval), 5000/hr with a personal access token
+- **First-poll silent** — adding a repo doesn't spam you with 30 old events; only alerts on activity *after* you added it
+- **Deduplicated** — the same event never fires the pet twice
+- **Per-type toggles** — silence PushEvent-only if a repo commits too often, keep alerts for reviews/deploys
+
+```bash
+claude-pet github watch facebook/react          # start watching
+claude-pet github watch nikhilagrima/claude-pet
+claude-pet github list                           # see what's watched
+claude-pet github events                         # recent activity feed
+claude-pet github check                          # force-poll now
+claude-pet github token ghp_yourPAT              # optional, unlocks private + 5000/hr
+```
+
+Or add repos via the **GITHUB** tab in the dashboard — click the pet, type `owner/repo`, hit `+ Watch`.
+
 
 ---
 
@@ -221,6 +254,17 @@ Ergonomics coach:
   claude-pet ergonomics snooze 30         Pause 30 min
   claude-pet ergonomics on / off          Master toggle
   claude-pet ergonomics reset             Wipe ergonomics history
+
+GitHub repo watcher:
+  claude-pet github watch owner/repo      Start watching a repo
+  claude-pet github unwatch owner/repo    Stop watching
+  claude-pet github enable/disable o/r    Pause/resume without removing
+  claude-pet github list                  Show watched repos + last-check age
+  claude-pet github events [--limit 20]   Recent activity feed
+  claude-pet github check                 Force-poll all repos now
+  claude-pet github token <PAT>           Store a personal access token
+                                          (unlocks private repos + 5000 req/hr)
+  claude-pet github token --remove        Clear the stored token
 
 Options:
   --show-in-dock              macOS: show the pet icon in the Dock / Cmd-Tab

@@ -134,7 +134,40 @@ CREATE TRIGGER IF NOT EXISTS nodes_fts_au AFTER UPDATE ON nodes BEGIN
 END;
 """
 
-SCHEMA_VERSION = 2
+# v3 additions — GitHub repo watcher (commits/PRs/reviews/deploys)
+SCHEMA_V3_ADDITIONS = """
+CREATE TABLE IF NOT EXISTS gh_watches (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner         TEXT NOT NULL,
+  repo          TEXT NOT NULL,
+  enabled       INTEGER NOT NULL DEFAULT 1,
+  last_event_id TEXT,
+  etag          TEXT,
+  last_checked  TEXT,
+  last_error    TEXT,
+  added_at      TEXT NOT NULL,
+  UNIQUE(owner, repo)
+);
+
+CREATE TABLE IF NOT EXISTS gh_events (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  watch_id     INTEGER NOT NULL REFERENCES gh_watches(id) ON DELETE CASCADE,
+  event_id     TEXT NOT NULL,
+  event_type   TEXT NOT NULL,
+  actor        TEXT,
+  title        TEXT NOT NULL,
+  url          TEXT,
+  reaction     TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  seen_at      TEXT NOT NULL,
+  alerted      INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(watch_id, event_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gh_events_watch ON gh_events(watch_id, seen_at DESC);
+"""
+
+SCHEMA_VERSION = 3
 
 
 def _fts5_available(conn: sqlite3.Connection) -> bool:
@@ -152,19 +185,19 @@ def _current_version(conn: sqlite3.Connection) -> int:
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
-    """Idempotent, additive migration. Never drops or renames v0.2.0 tables."""
-    version = _current_version(conn)
-    # v1: baseline (v0.2.0 shipped without user_version — treat both 0 and 1 as v1).
-    if version < 1:
-        conn.executescript(SCHEMA_V1)
-        conn.execute(f"PRAGMA user_version = 1")
-    # v2: additive — nodes/edges/skills + FTS.
-    if _current_version(conn) < SCHEMA_VERSION:
-        conn.executescript(SCHEMA_V1)  # safe: CREATE IF NOT EXISTS
-        conn.executescript(SCHEMA_V2_ADDITIONS)
-        if _fts5_available(conn):
-            conn.executescript(SCHEMA_V2_FTS)
-        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    """Idempotent, additive migration. Never drops or renames v0.2.0 tables.
+
+    All schema scripts use `CREATE ... IF NOT EXISTS`, so we run every block
+    on every connect. This is cheap (SQLite short-circuits when the object
+    exists) and self-heals if a prior code version bumped `user_version` past
+    a step without creating the corresponding tables.
+    """
+    conn.executescript(SCHEMA_V1)
+    conn.executescript(SCHEMA_V2_ADDITIONS)
+    if _fts5_available(conn):
+        conn.executescript(SCHEMA_V2_FTS)
+    conn.executescript(SCHEMA_V3_ADDITIONS)
+    conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
 @contextmanager
