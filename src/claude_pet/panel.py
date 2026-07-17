@@ -430,6 +430,48 @@ class GraphTab(QWidget):
             self._timer.stop()
 
 
+class ErgonomicsTab(QWidget):
+    """Today's breaks, streak, adherence, most-skipped exercise."""
+
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout(self)
+        self.label = QLabel()
+        self.label.setTextFormat(Qt.RichText)
+        self.label.setWordWrap(True)
+        self.layout.addWidget(self.label)
+        self.layout.addStretch(1)
+        self.refresh()
+
+    def refresh(self):
+        from .ergonomics import tracker as t
+        adh = t.adherence_last_n_days(7)
+        streak = t.daily_streak()
+        skipped = t.most_skipped_exercise()
+        today = t.today_breaks()
+        completed_today = sum(1 for b in today if b["completed"])
+        html = "<h2>Ergonomics coach</h2>"
+        html += f"<p><b>Today:</b> {completed_today} completed of {len(today)} prompted"
+        if today:
+            html += "<br><small>"
+            for b in today[:8]:
+                mark = "✓" if b["completed"] else "✗"
+                html += f"{mark} {b['ts'][11:16]} {b['category']} &nbsp; "
+            html += "</small>"
+        html += "</p>"
+        html += (f"<p><b>Streak:</b> {streak} day{'s' if streak != 1 else ''}<br>"
+                 f"<b>7-day adherence:</b> {adh['completed']}/{adh['total']} "
+                 f"({adh['adherence']*100:.0f}%)</p>")
+        if skipped:
+            html += (f"<p><b>Most skipped:</b> {skipped[0]} ({skipped[1]}×)<br>"
+                     f"<small style='color:#94A3B8'>Consider adjusting its interval "
+                     f"or turning it off in the config.</small></p>")
+        html += ("<hr><p style='color:#94A3B8; font-size:11px'>"
+                 "Wellness guidance based on AOA / HSE / OSHA / CCOHS sources. "
+                 "Not medical advice.</p>")
+        self.label.setText(html)
+
+
 class MemoryPanel(QDialog):
     """The floating panel that opens when you click the pet."""
 
@@ -444,10 +486,12 @@ class MemoryPanel(QDialog):
         self.graph = GraphTab()
         self.skills = SkillsTab()
         self.stats = StatsTab()
+        self.ergo = ErgonomicsTab()
         tabs.addTab(self.projects, "Projects")
         tabs.addTab(self.graph, "Graph")
         tabs.addTab(self.skills, "Skills")
         tabs.addTab(self.stats, "Stats")
+        tabs.addTab(self.ergo, "Ergonomics")
         layout.addWidget(tabs)
 
         actions = QHBoxLayout()
@@ -465,3 +509,4 @@ class MemoryPanel(QDialog):
         self.graph.refresh()
         self.skills.refresh()
         self.stats.refresh()
+        self.ergo.refresh()

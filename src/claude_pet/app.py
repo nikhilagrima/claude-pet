@@ -156,6 +156,9 @@ class PetWindow(QWidget):
         self.drag_distance = 0
         self.sound = SoundPlayer()
         self.menu = self._build_menu()
+        self._active_break = None
+        self._break_snooze_until = 0.0
+        self._break_pending_since = None    # set when a prompt was deferred
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
@@ -207,6 +210,9 @@ class PetWindow(QWidget):
             ("Celebrate", lambda: self.poke("proud")),
             ("Sleep", lambda: self._set_state("sleeping", post=True)),
             (None, None),
+            ("Take a break now", self._trigger_break_now),
+            ("Snooze breaks 30 min", lambda: self._snooze_breaks(30 * 60)),
+            (None, None),
             ("Reset position", self._move_to_bottom_right),
             (None, None),
             ("Quit", QApplication.instance().quit),
@@ -218,6 +224,35 @@ class PetWindow(QWidget):
             act.triggered.connect(target)
             m.addAction(act)
         return m
+
+    def _trigger_break_now(self):
+        """Manual break trigger — picks the most overdue category or eyes as default."""
+        from .ergonomics import scheduler, exercises, tracker
+        # Find whichever category has the biggest overrun; fall back to eyes.
+        best_cat = "eyes"
+        best_score = -1.0
+        for cat in ("eyes", "neck", "wrists", "posture", "hydration"):
+            elapsed = tracker.active_seconds_since_last(cat)
+            if elapsed > best_score:
+                best_score = elapsed
+                best_cat = cat
+        exercise = exercises.for_category(best_cat)
+        if exercise:
+            self._show_break(exercise.category, exercise.slug)
+
+    def _snooze_breaks(self, seconds: float):
+        from .ergonomics import scheduler
+        self._break_snooze_until = scheduler.snooze_until(seconds)
+
+    def _show_break(self, category: str, exercise_slug: str):
+        from .ergonomics.overlay import BreakOverlay
+        from .ergonomics import tracker
+        # Distinct chime for break prompts (Purr is soft, non-alarming).
+        self.sound.play("attention")
+        def on_close(completed: bool):
+            tracker.note_break_completed(category, exercise_slug, completed)
+        self._active_break = BreakOverlay(exercise_slug, on_close)
+        self._active_break.show()
 
     def _tick(self):
         try:
@@ -252,6 +287,41 @@ class PetWindow(QWidget):
         except Exception as e:
             print(f"[pet] render error: {e}")
         self.frame_idx += 1
+
+        # Ergonomics scheduler check — cheap enough to run every tick, and
+        # break thresholds are minutes so we never over-prompt. Only when
+        # there's no already-open break overlay.
+        if (self._active_break is None or not self._active_break.isVisible()) \
+                and (self.frame_idx % 30 == 0):
+            self._maybe_prompt_break()
+
+    def _maybe_prompt_break(self):
+        try:
+            from .ergonomics import scheduler, config as ergo_config, tracker as ergo_tracker
+            cfg = ergo_config.load()
+            if not cfg.get("enabled", True):
+                return
+            if ergo_config.is_quiet_hours(cfg):
+                return
+            if time.time() < self._break_snooze_until:
+                return
+            prompt = scheduler.check_due(
+                pet_status=self.current_status,
+                last_activity_at=self.last_state_change,
+                thresholds=ergo_config.effective_thresholds(cfg),
+                pending_since=self._break_pending_since,
+            )
+            if prompt is None:
+                # If we were pending and no longer due (state changed), clear it.
+                self._break_pending_since = None
+                return
+            # If the scheduler said 'due but I want to defer' vs 'due, prompt now':
+            # our check_due only returns non-None when it's OK to prompt. If it
+            # ever returns None while we've been sitting on a pending, we clear.
+            self._break_pending_since = None
+            self._show_break(prompt.category, prompt.exercise_slug)
+        except Exception as e:
+            print(f"[pet] ergonomics check error: {e}")
 
     def paintEvent(self, event):
         if self.pixmap is None:
@@ -332,6 +402,15 @@ class PetWindow(QWidget):
     def _set_state(self, new, post=True, auto_revert=None):
         if new == self.current_status:
             return
+        # Ergonomics: activity vs idle transitions gate the tracker.
+        from .ergonomics import tracker as _ergo_tracker
+        if new == "sleeping":
+            _ergo_tracker.mark_idle()
+        elif self.current_status == "sleeping":
+            _ergo_tracker.mark_activity()
+        # Any real work state also counts as activity — cheap idempotent write.
+        if new in ("reading", "writing", "running", "working", "thinking"):
+            _ergo_tracker.mark_activity()
         self.current_status = new
         self.frame_idx = 0
         self.last_state_change = time.time()

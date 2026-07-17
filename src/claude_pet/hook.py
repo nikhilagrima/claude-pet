@@ -10,6 +10,7 @@ from . import memory
 from . import distill
 from . import context as ctx
 from . import skills
+from .ergonomics import tracker as ergo_tracker
 
 PET_URL = "http://localhost:5050/state"
 
@@ -65,6 +66,17 @@ def _remember(event: str, tool: str | None, project_path: str | None) -> None:
         elif e in ("pretooluse", "onpretooluse", "onworking"):
             if tool:
                 memory.record_tool_use(tool, project_path)
+            # Every tool call is genuine activity — feeds the ergonomics
+            # counters. Best-effort; failures never break the hook.
+            try:
+                ergo_tracker.mark_activity()
+            except Exception:
+                pass
+        elif e in ("userpromptsubmit", "onprompt", "onthinking"):
+            try:
+                ergo_tracker.mark_activity()
+            except Exception:
+                pass
         elif e in ("stop", "ondone"):
             memory.record_success(project_path)
             # Distill the just-ended session into graph nodes.

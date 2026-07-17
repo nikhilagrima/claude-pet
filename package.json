@@ -1,0 +1,12 @@
+{
+  "name": "claude-pet-scripts",
+  "private": true,
+  "description": "npm script wrappers for common Claude Pet operations",
+  "scripts": {
+    "pet:stop": "\"$HOME/.claude-pet-venv/bin/claude-pet\" stop",
+    "pet:start": "\"$HOME/.claude-pet-venv/bin/claude-pet\" start",
+    "pet:restart": "\"$HOME/.claude-pet-venv/bin/claude-pet\" stop; sleep 1; \"$HOME/.claude-pet-venv/bin/claude-pet\" start",
+    "pet:doctor": "\"$HOME/.claude-pet-venv/bin/claude-pet\" doctor",
+    "pet:test": "\"$HOME/.claude-pet-venv/bin/python\" -m unittest discover -s tests"
+  }
+}

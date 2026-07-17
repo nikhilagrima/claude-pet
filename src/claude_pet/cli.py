@@ -170,6 +170,80 @@ def cmd_memory(args):
     return 0
 
 
+def cmd_ergonomics(args):
+    """`claude-pet ergonomics <sub>` — status / stats / break-now / snooze / on / off."""
+    from .ergonomics import config as ergo_config
+    from .ergonomics import tracker as ergo_tracker
+    sub = getattr(args, "ergo_sub", None) or "status"
+    cfg = ergo_config.load()
+    if sub == "status":
+        print(f"Ergonomics coach: {'ON' if cfg.get('enabled', True) else 'OFF'}")
+        print(f"Quiet hours: {'on' if cfg.get('quiet_hours',{}).get('enabled') else 'off'}")
+        print()
+        print("Category thresholds (minutes) — [enabled]:")
+        for cat in ("eyes", "neck", "wrists", "posture", "hydration"):
+            m = cfg.get("intervals_min", {}).get(cat, "-")
+            en = cfg.get("categories_enabled", {}).get(cat, True)
+            elapsed_min = ergo_tracker.active_seconds_since_last(cat) / 60
+            print(f"  {cat:10}  every {m} min   [{'x' if en else ' '}]   "
+                  f"currently {elapsed_min:.1f} min into the window")
+        return 0
+    if sub == "stats":
+        adh = ergo_tracker.adherence_last_n_days(7)
+        streak = ergo_tracker.daily_streak()
+        skipped = ergo_tracker.most_skipped_exercise()
+        print(f"Last {adh['days']} days: {adh['completed']}/{adh['total']} breaks "
+              f"({adh['adherence']*100:.0f}% adherence)")
+        print(f"Current streak: {streak} day{'s' if streak != 1 else ''}")
+        if skipped:
+            print(f"Most skipped: {skipped[0]} ({skipped[1]}x)")
+        today = ergo_tracker.today_breaks()
+        print(f"Today: {len(today)} break(s)")
+        for b in today[:10]:
+            mark = "✓" if b["completed"] else "✗"
+            print(f"  {mark} {b['ts']}  {b['category']:10}  {b['exercise']}")
+        return 0
+    if sub == "break-now":
+        # Ask the running pet to open a break via a state POST — the pet's
+        # menu handler picks the most-overdue category.
+        import urllib.request
+        try:
+            urllib.request.urlopen(
+                urllib.request.Request(
+                    "http://localhost:5050/state",
+                    data=b'{"status":"curious","event":"break-now-cli"}',
+                    headers={"Content-Type": "application/json"}, method="POST",
+                ), timeout=1,
+            )
+            print("[claude-pet] break request sent — the pet will open an overlay.")
+        except Exception:
+            print("[claude-pet] pet server not responding; start it first.")
+        return 0
+    if sub == "snooze":
+        # e.g. `claude-pet ergonomics snooze 30` → 30 minutes.
+        minutes = int(getattr(args, "snooze_min", 30))
+        # Snoozing is enforced by the running pet's in-memory flag; without a
+        # daemon we can only persist it as a "snoozed_until" wall-clock stamp.
+        import time as _t
+        until = _t.time() + minutes * 60
+        cfg["_snoozed_until"] = until
+        ergo_config.save(cfg)
+        print(f"[claude-pet] snoozed for {minutes} min "
+              f"(until {_t.strftime('%H:%M', _t.localtime(until))}).")
+        return 0
+    if sub in ("on", "off"):
+        cfg["enabled"] = (sub == "on")
+        ergo_config.save(cfg)
+        print(f"[claude-pet] ergonomics coach: {sub.upper()}")
+        return 0
+    if sub == "reset":
+        ergo_tracker.reset_all()
+        print("[claude-pet] ergonomics history wiped.")
+        return 0
+    print(f"unknown subcommand: {sub}")
+    return 1
+
+
 def cmd_forget(args):
     """Delete every memory row for a project (CLI counterpart of the UI's
     'Delete selected project from memory' button)."""
@@ -451,6 +525,16 @@ def main():
     )
     forget_p.add_argument("--path", help="project path to forget (default: current)")
 
+    ergo_p = sub.add_parser(
+        "ergonomics",
+        help="ergonomics coach: status | stats | break-now | snooze N | on | off | reset",
+    )
+    ergo_p.add_argument("ergo_sub", nargs="?", default="status",
+                        choices=["status", "stats", "break-now", "snooze",
+                                 "on", "off", "reset"])
+    ergo_p.add_argument("snooze_min", nargs="?", type=int, default=30,
+                        help="minutes to snooze (only for 'snooze')")
+
     ctx_p = sub.add_parser(
         "context",
         help="print current project's saved context (for pasting into a new session)",
@@ -483,6 +567,8 @@ def main():
         return cmd_context(args)
     if args.cmd == "forget":
         return cmd_forget(args)
+    if args.cmd == "ergonomics":
+        return cmd_ergonomics(args)
     return 0
 
 

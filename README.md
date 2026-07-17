@@ -38,6 +38,34 @@ You always know what's happening — even when you can't see the terminal.
 
 The killer feature: **sound alerts**. When Claude finishes a task, the pet plays **3 short dings**. When Claude is **waiting for your input or permission** — the moment you'd otherwise leave it hanging while you read Slack — the pet plays **2 attention beeps**. Failures get a low thud. You can tab away, grab coffee, work on another screen: your ears tell you the moment Claude needs you back.
 
+### 🧘 v0.4.0 — Ergonomics Coach
+
+The pet now **watches for real work time** (from Claude Code hook events) and prompts you for evidence-based micro-breaks at the right moments — **not** when you're at lunch. Every prompt opens an overlay where **the pet itself demonstrates the exercise** through an animated SVG, with a countdown ring and a Done / Skip button.
+
+- **Eye break (20-20-20)** every 20 min of active work — look ~6 m away, 20 s, keep blinking (AOA guidance)
+- **Chin tuck** every 30 min — most-RCT-backed fix for forward-head posture (CCOHS)
+- **Wrist circles** every 45 min — prevent RSI (OSHA)
+- **Reach high** every 60 min — postural reset (HSE 2025)
+- **Water break** every 60 min — hydration reminder
+
+**What makes it different from every other break app:**
+- **Activity-aware** — the pet's existing 3-min sleep state pauses all timers, so timers never fire when you're not actually working
+- **Never interrupts typing** — if a threshold hits while you're typing a prompt, it defers up to 5 min
+- **The pet demonstrates** — you don't get "time for a break!" and have to Google what to do; the mascot performs the stretch, you mirror it
+- **Guided completion** — the overlay stays until you mark Done or Skip; adherence is tracked and shown in the Ergonomics tab
+
+```bash
+claude-pet ergonomics status     # see current thresholds + windows
+claude-pet ergonomics stats      # 7-day adherence, streak, most-skipped
+claude-pet ergonomics break-now  # open a break overlay immediately
+claude-pet ergonomics snooze 30  # 30-min pause
+claude-pet ergonomics on / off   # master toggle
+```
+
+Config lives at `~/.claude/claude-pet/config.json` (intervals per category, quiet hours, sound on/off, per-category toggles). Right-click the pet → **Take a break now**, **Snooze 30 min**.
+
+> **Not medical advice.** This is wellness guidance based on published ergonomics research (AOA, HSE, OSHA, CCOHS). It does not diagnose or treat any condition. If you have pain, see a professional.
+
 ### 🧠 v0.3.0 — Memory brain for Claude Code
 
 Claude Pet is no longer just a mascot. It's a **local memory brain**:

@@ -1,0 +1,82 @@
+<svg style="--bf-chip:#111111;--bf-chip-border:#1F1F1F;--bf-text:#FFFFFF;--bf-text2:#B8B8B8;--bf-muted:#A0A0A0;--acc-blue:#5B8DEF;--acc-cyan:#53D8E8;--acc-green:#4ADE80;--acc-red:#F87171" viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, sans-serif">
+  <defs>
+    <radialGradient id="fgE" cx="35%" cy="28%" r="95%">
+      <stop offset="0%" stop-color="#262A4A"/>
+      <stop offset="55%" stop-color="#14162B"/>
+      <stop offset="100%" stop-color="#080910"/>
+    </radialGradient>
+  </defs>
+  <rect x="68" y="8" width="84" height="24" rx="12" style="fill:var(--bf-chip);stroke:var(--bf-chip-border)"/>
+  <text x="110" y="24" text-anchor="middle" font-size="13" font-weight="700" style="fill:var(--bf-text)">Eye break</text>
+
+  <g transform="translate(16 40)">
+    <rect x="-4" y="-4" width="46" height="38" rx="6" style="fill:var(--bf-chip);stroke:var(--bf-chip-border)"/>
+    <rect x="-4" y="-4" width="46" height="38" rx="6" fill="none" stroke-width="2" style="stroke:var(--acc-cyan)">
+      <animate attributeName="opacity" values="0;0.9;0.9;0;0;0.9;0.9;0;0;0" keyTimes="0;0.02;0.23;0.25;0.48;0.50;0.73;0.75;0.98;1" dur="20s" repeatCount="indefinite"/>
+    </rect>
+    <circle cx="12" cy="8" r="5" style="fill:var(--bf-text)">
+      <animate attributeName="opacity" values="1;0.4;1" dur="3s" repeatCount="indefinite"/>
+    </circle>
+    <path d="M-2 26 L10 12 L18 22 L26 10 L40 26 Z" style="fill:var(--bf-muted)"/>
+    <line x1="-2" y1="26" x2="40" y2="26" stroke-width="2" style="stroke:var(--bf-text2)"/>
+  </g>
+  <g transform="translate(158 40)">
+    <rect x="-4" y="-4" width="46" height="38" rx="6" style="fill:var(--bf-chip);stroke:var(--bf-chip-border)"/>
+    <rect x="-4" y="-4" width="46" height="38" rx="6" fill="none" stroke-width="2" style="stroke:var(--acc-cyan)">
+      <animate attributeName="opacity" values="0;0;0;0.9;0.9;0;0;0.9;0.9;0" keyTimes="0;0.02;0.23;0.25;0.48;0.50;0.73;0.75;0.98;1" dur="20s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="12" y="20" width="14" height="10" rx="2" style="fill:var(--bf-muted)"/>
+    <ellipse cx="19" cy="12" rx="4" ry="9" style="fill:var(--acc-green)"/>
+    <ellipse cx="11" cy="15" rx="3.5" ry="7" transform="rotate(-25 11 15)" opacity="0.8" style="fill:var(--acc-green)"/>
+    <ellipse cx="27" cy="15" rx="3.5" ry="7" transform="rotate(25 27 15)" opacity="0.8" style="fill:var(--acc-green)"/>
+  </g>
+
+  <g>
+    <animate attributeName="opacity" values="0;0.85;0.85;0;0;0.85;0.85;0;0;0" keyTimes="0;0.02;0.23;0.25;0.48;0.50;0.73;0.75;0.98;1" dur="20s" repeatCount="indefinite"/>
+    <line x1="96" y1="116" x2="52" y2="72" stroke-width="1.5" stroke-dasharray="4 4" style="stroke:var(--bf-muted)"/>
+    <text x="58" y="98" font-size="9" font-weight="700" style="fill:var(--acc-cyan)">20 ft</text>
+  </g>
+  <g>
+    <animate attributeName="opacity" values="0;0;0;0.85;0.85;0;0;0.85;0.85;0" keyTimes="0;0.02;0.23;0.25;0.48;0.50;0.73;0.75;0.98;1" dur="20s" repeatCount="indefinite"/>
+    <line x1="124" y1="116" x2="168" y2="72" stroke-width="1.5" stroke-dasharray="4 4" style="stroke:var(--bf-muted)"/>
+    <text x="138" y="98" font-size="9" font-weight="700" style="fill:var(--acc-cyan)">20 ft</text>
+  </g>
+
+  <g>
+    <animateTransform attributeName="transform" type="translate" values="0 0;0 1.5;0 0" dur="3s" repeatCount="indefinite"/>
+    <g>
+      <animateTransform attributeName="transform" type="translate"
+        values="0 0; -4 0; -4 0; 4 0; 4 0; -4 0; -4 0; 4 0; 4 0; 0 0"
+        keyTimes="0;0.02;0.23;0.25;0.48;0.50;0.73;0.75;0.98;1" dur="20s" repeatCount="indefinite"/>
+    <rect x="50" y="78" width="120" height="84" rx="42" fill="#2A2D35"/>
+    <rect x="55" y="83" width="110" height="74" rx="37" fill="url(#fgE)" stroke="#C9CCD1" stroke-width="3"/>
+    <path d="M82 92 C104 84 138 86 152 98 C158 103 158 114 150 117 C142 120 136 112 124 105 C110 97 92 96 82 92 Z" fill="#9DA1A9" opacity="0.85"/>
+    <path d="M84 90 C106 82 140 84 154 97" stroke="#E8EAEE" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.9"/>
+    <ellipse cx="76" cy="146" rx="9" ry="4" fill="#8A8E96" opacity="0.5" transform="rotate(-18 76 146)"/>
+      <g style="fill:var(--acc-cyan)">
+        <animateTransform attributeName="transform" type="translate"
+          values="0 0; -9 -6; -9 -6; 9 -6; 9 -6; -9 -6; -9 -6; 9 -6; 9 -6; 0 0"
+          keyTimes="0;0.02;0.23;0.25;0.48;0.50;0.73;0.75;0.98;1" dur="20s" repeatCount="indefinite"/>
+        <ellipse cx="92" cy="124" rx="6" ry="6">
+          <animate attributeName="ry" values="6;6;0.7;6;6;0.7;6;6;0.7;6;6" keyTimes="0;0.225;0.24;0.255;0.475;0.49;0.505;0.725;0.74;0.755;1" dur="20s" repeatCount="indefinite"/>
+        </ellipse>
+        <ellipse cx="128" cy="124" rx="6" ry="6">
+          <animate attributeName="ry" values="6;6;0.7;6;6;0.7;6;6;0.7;6;6" keyTimes="0;0.225;0.24;0.255;0.475;0.49;0.505;0.725;0.74;0.755;1" dur="20s" repeatCount="indefinite"/>
+        </ellipse>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(28 178)">
+    <circle r="17" style="fill:var(--bf-chip);stroke:var(--bf-chip-border)"/>
+    <circle r="13" fill="none" stroke-width="4" style="stroke:var(--bf-chip-border)"/>
+    <circle r="13" fill="none" stroke-width="4" stroke-linecap="round" stroke-dasharray="81.7" transform="rotate(-90)" style="stroke:var(--acc-cyan)">
+      <animate attributeName="stroke-dashoffset" values="0;81.7" dur="20s" repeatCount="indefinite"/>
+    </circle>
+    <text y="3.5" text-anchor="middle" font-size="9" font-weight="700" style="fill:var(--bf-text)">20s</text>
+  </g>
+
+  <rect x="54" y="192" width="158" height="24" rx="12" style="fill:var(--bf-chip);stroke:var(--bf-chip-border)"/>
+  <text x="133" y="202" text-anchor="middle" font-size="9.5" style="fill:var(--bf-text2)">Look at anything 20 ft away — switch sides</text>
+  <text x="133" y="212" text-anchor="middle" font-size="9.5" style="fill:var(--bf-text2)">20 s total &#183; keep blinking</text>
+</svg>
