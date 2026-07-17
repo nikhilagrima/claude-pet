@@ -15,12 +15,14 @@ from typing import Callable
 
 from PySide6.QtCore import Qt, QTimer, QRectF
 from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtCore import QByteArray
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
 )
 
 from . import exercises
+from .svg_inline import load_inlined
 
 
 class _CountdownRing(QWidget):
@@ -105,9 +107,14 @@ class BreakOverlay(QDialog):
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
-        # The animated SVG — QSvgWidget honors SMIL natively.
-        self.svg = QSvgWidget(self.exercise.svg_path())
-        self.svg.setFixedSize(220, 220)
+        # The animated SVG — QSvgWidget honors SMIL natively. We inline the
+        # root's CSS custom properties first because Qt's SVG renderer
+        # ignores `var(--name)`; without this, every accent element (monitor
+        # icons, water color, "20 ft" labels, arrow guides, countdown ring)
+        # falls back to no-fill and disappears.
+        self.svg = QSvgWidget()
+        self.svg.load(QByteArray(load_inlined(self.exercise.svg_path())))
+        self.svg.setFixedSize(240, 240)
         layout.addWidget(self.svg, alignment=Qt.AlignCenter)
 
         instr = QLabel(self.exercise.instruction)
