@@ -816,11 +816,29 @@ class GraphTab(QWidget):
 
 
 class ErgonomicsTab(QWidget):
-    """Today's breaks, streak, adherence, most-skipped exercise."""
+    """Today's breaks, streak, adherence, most-skipped exercise + master toggle."""
 
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(14, 14, 14, 14)
+        self.layout.setSpacing(10)
+
+        # Master toggle row — on/off + break-now buttons.
+        toggle_row = QHBoxLayout()
+        self.status_label = QLabel()
+        toggle_row.addWidget(self.status_label)
+        toggle_row.addStretch(1)
+        self.toggle_btn = QPushButton("")
+        self.toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.toggle_btn.clicked.connect(self._toggle_enabled)
+        toggle_row.addWidget(self.toggle_btn)
+        self.break_now_btn = QPushButton("Break now")
+        self.break_now_btn.setCursor(Qt.PointingHandCursor)
+        self.break_now_btn.clicked.connect(self._trigger_break_now)
+        toggle_row.addWidget(self.break_now_btn)
+        self.layout.addLayout(toggle_row)
+
         self.label = QLabel()
         self.label.setTextFormat(Qt.RichText)
         self.label.setWordWrap(True)
@@ -828,14 +846,50 @@ class ErgonomicsTab(QWidget):
         self.layout.addStretch(1)
         self.refresh()
 
+    def _toggle_enabled(self):
+        from .ergonomics import config as cfg_mod
+        cfg = cfg_mod.load()
+        cfg["enabled"] = not cfg.get("enabled", True)
+        cfg_mod.save(cfg)
+        self.refresh()
+
+    def _trigger_break_now(self):
+        import urllib.request as _u, json as _json
+        try:
+            _u.urlopen(_u.Request(
+                "http://localhost:5050/break",
+                data=_json.dumps({}).encode(),
+                headers={"Content-Type": "application/json"}, method="POST",
+            ), timeout=1)
+        except Exception:
+            pass
+
     def refresh(self):
-        from .ergonomics import tracker as t
+        from .ergonomics import tracker as t, config as cfg_mod
+        cfg = cfg_mod.load()
+        enabled = cfg.get("enabled", True)
+        # Status pill on the left of the toggle row.
+        dot_color = NEON["cyan"] if enabled else NEON["text_muted"]
+        state_word = "ACTIVE" if enabled else "PAUSED"
+        self.status_label.setText(
+            f"<span style='color:{dot_color}; font-size:16px'>●</span> "
+            f"<b style='color:{NEON['text']}; font-family:Menlo'>"
+            f"ERGONOMICS COACH — {state_word}</b>"
+        )
+        # Toggle button label mirrors the CURRENT state → click acts on it.
+        self.toggle_btn.setText("Turn OFF" if enabled else "Turn ON")
+        self.toggle_btn.setObjectName("primary" if not enabled else "")
+        # Re-apply stylesheet so objectName change takes effect.
+        self.toggle_btn.style().unpolish(self.toggle_btn)
+        self.toggle_btn.style().polish(self.toggle_btn)
+        self.break_now_btn.setEnabled(enabled)
+
         adh = t.adherence_last_n_days(7)
         streak = t.daily_streak()
         skipped = t.most_skipped_exercise()
         today = t.today_breaks()
         completed_today = sum(1 for b in today if b["completed"])
-        html = "<h2>Ergonomics coach</h2>"
+        html = ""
         html += f"<p><b>Today:</b> {completed_today} completed of {len(today)} prompted"
         if today:
             html += "<br><small>"

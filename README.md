@@ -8,7 +8,11 @@
 
 _Made by [Byteflow.bot](https://byteflow.bot) — free & open source._
 
-**v0.3.0 — now a memory brain** for Claude Code. Remembers every project you code in, injects only what matters back into each new session (≤800 tokens, always), learns skills from repeated patterns, and evolves visually as you level up.
+**v0.4.x** — the pet that reacts to Claude Code (sound + emotions), **remembers every project you code in** (SQLite graph, ≤800-token context injection), **learns skills** from repeated patterns, **coaches your ergonomics** with animated exercises, and **shows it all in a futuristic HUD dashboard** when you click it.
+
+[![tests](https://github.com/nikhilagrima/claude-pet/actions/workflows/test.yml/badge.svg)](https://github.com/nikhilagrima/claude-pet/actions/workflows/test.yml)
+[![build](https://github.com/nikhilagrima/claude-pet/actions/workflows/build.yml/badge.svg)](https://github.com/nikhilagrima/claude-pet/actions/workflows/build.yml)
+[![license](https://img.shields.io/badge/license-MIT-cyan)](LICENSE)
 
 </div>
 
@@ -33,6 +37,26 @@ It's a small robot mascot that floats in the bottom-right corner of your screen 
 - ⭐ **Star eyes** — new session started
 
 You always know what's happening — even when you can't see the terminal.
+
+### ✨ What's new in v0.4.x
+
+| Version | Feature |
+|---|---|
+| **v0.4.6** | Overlay chrome deduplicated — no more double titles/countdowns |
+| **v0.4.5** | Ergonomics SVG accents now render (monitors, water glass, arrows) — CSS custom-property inliner |
+| **v0.4.4** | Clean minimal HUD dashboard — halo/scanline removed, larger readable type |
+| **v0.4.3** | HUD Stats tab with data cells + circular gauge meters |
+| **v0.4.2** | Futuristic dashboard theme: deep navy, cyan hairlines, corner brackets, monospace |
+| **v0.4.1** | `/break` endpoint — `claude-pet ergonomics break-now` actually opens overlays |
+| **v0.4.0** | **Ergonomics Coach** — activity-aware breaks, animated exercises, adherence tracking |
+| **v0.3.3** | Pet self-replaces stale versions on upgrade (no manual `kill -9` needed) |
+| **v0.3.2** | `claude-pet doctor` self-heals broken hooks; installer uses `~/.claude-pet-venv/` (TCC-safe) |
+| **v0.3.1** | Skills land in Claude Code's discovery path (`~/.claude/skills/`) so they actually load |
+| **v0.3.0** | Memory brain — SQLite graph, `.ua` ingest, ranked context injection, self-learning skills |
+
+83 tests across 3 platforms (macOS / Windows / Linux), all green.
+
+---
 
 ### 🔔 Never miss when Claude needs you
 
@@ -152,11 +176,17 @@ The installer is idempotent — safe to run multiple times.
 
 ## How to use it
 
-- **Click** the mascot → curious reaction
-- **Drag** it → move it anywhere
-- **Right-click** → context menu (Hello / Working / Celebrate / Sleep / Reset / Quit)
-- **After 3 min idle** → falls asleep with animated Zzz's
-- **Every 30s during idle** → briefly shows the current time
+- **Click** the mascot → opens the HUD dashboard (Projects / Graph / Skills / Stats / Ergo tabs)
+- **Drag** the mascot → move it anywhere
+- **Right-click** the mascot → context menu:
+  - Hello / Working / Celebrate / Sleep (reaction pokes)
+  - **Take a break now** (open the ergonomics overlay immediately)
+  - **Snooze breaks 30 min**
+  - **Turn Ergonomics ON/OFF** (label reflects current state)
+  - Reset position / Quit
+- **In the dashboard's Ergonomics tab** → master toggle button + "Break now" + live streak / adherence / today's breaks
+- **After 3 min idle** → mascot falls asleep with animated Zzz's, all ergonomics timers pause
+- **Every 30 s during idle** → mascot briefly shows the current time
 
 The mascot **stays on top of every application** (including fullscreen apps and other Spaces on macOS), so you never lose sight of it.
 
@@ -165,16 +195,31 @@ The mascot **stays on top of every application** (including fullscreen apps and 
 ## CLI reference
 
 ```
-claude-pet run                Run pet + server in this terminal (foreground)
-claude-pet start              Start pet + server detached in the background
-claude-pet stop               Kill running pet
-claude-pet install-hooks      Add Claude Code hook entries to ~/.claude/settings.json
-claude-pet uninstall-hooks    Remove them again
-claude-pet hook <event>       Internal — invoked by Claude Code hooks
-claude-pet memory             Show saved history for the current project
-claude-pet memory --all       List every remembered project
-claude-pet note <text...>     Attach a note to the current project
-claude-pet context            Print the context block Claude sees on session start
+Process lifecycle:
+  claude-pet run                Run pet + server in this terminal (foreground)
+  claude-pet start              Start pet + server detached in the background
+  claude-pet stop               Kill running pet
+  claude-pet doctor             Diagnose broken hook paths and auto-heal
+
+Hook wiring:
+  claude-pet install-hooks      Add Claude Code hook entries to ~/.claude/settings.json
+  claude-pet uninstall-hooks    Remove them again
+  claude-pet hook <event>       Internal — invoked by Claude Code hooks
+
+Memory brain:
+  claude-pet memory             Show saved history for the current project
+  claude-pet memory --all       List every remembered project
+  claude-pet note <text...>     Attach a note to the current project
+  claude-pet context            Print the context block Claude sees on session start
+  claude-pet forget --path P    Delete every memory row for a project
+
+Ergonomics coach:
+  claude-pet ergonomics status  Show current thresholds + windows
+  claude-pet ergonomics stats   7-day adherence, streak, most-skipped
+  claude-pet ergonomics break-now [slug]  Open a break overlay now (any slug)
+  claude-pet ergonomics snooze 30         Pause 30 min
+  claude-pet ergonomics on / off          Master toggle
+  claude-pet ergonomics reset             Wipe ergonomics history
 
 Options:
   --show-in-dock              macOS: show the pet icon in the Dock / Cmd-Tab

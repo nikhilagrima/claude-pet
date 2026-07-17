@@ -204,7 +204,11 @@ class PetWindow(QWidget):
         )
 
     def _build_menu(self):
+        # Rebuilt fresh every popup so the Ergonomics toggle label reflects
+        # the current on/off state.
         m = QMenu(self)
+        from .ergonomics import config as ergo_cfg
+        ergo_enabled = ergo_cfg.load().get("enabled", True)
         for label, target in [
             ("Hello", lambda: self.poke("curious")),
             ("Working", lambda: self.poke("working")),
@@ -213,6 +217,8 @@ class PetWindow(QWidget):
             (None, None),
             ("Take a break now", self._trigger_break_now),
             ("Snooze breaks 30 min", lambda: self._snooze_breaks(30 * 60)),
+            (f"Turn Ergonomics {'OFF' if ergo_enabled else 'ON'}",
+             self._toggle_ergonomics),
             (None, None),
             ("Reset position", self._move_to_bottom_right),
             (None, None),
@@ -225,6 +231,13 @@ class PetWindow(QWidget):
             act.triggered.connect(target)
             m.addAction(act)
         return m
+
+    def _toggle_ergonomics(self):
+        from .ergonomics import config as ergo_cfg
+        cfg = ergo_cfg.load()
+        cfg["enabled"] = not cfg.get("enabled", True)
+        ergo_cfg.save(cfg)
+        # Rebuild menu next time it opens so the label refreshes.
 
     def _trigger_break_now(self):
         """Manual break trigger — picks the most overdue category or eyes as default."""
@@ -372,6 +385,9 @@ class PetWindow(QWidget):
             self.drag_distance = 0
             event.accept()
         elif event.button() == Qt.RightButton:
+            # Rebuild the menu each time so the Ergonomics ON/OFF label
+            # reflects the current toggle state.
+            self.menu = self._build_menu()
             self.menu.exec(event.globalPosition().toPoint())
             event.accept()
 
