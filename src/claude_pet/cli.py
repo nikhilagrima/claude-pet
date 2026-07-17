@@ -170,6 +170,82 @@ def cmd_memory(args):
     return 0
 
 
+def cmd_update(args):
+    """Pull the latest release from GitHub and reinstall + restart the pet.
+
+    Two paths:
+    - editable install (git clone): `git pull` in the source tree, then
+      pip re-install to catch new deps, then `claude-pet start` self-replaces.
+    - regular install: `pip install --upgrade` from GitHub, then restart.
+
+    Idempotent — running when already on latest just prints 'up to date'."""
+    import subprocess
+
+    # 1. Figure out what's installed vs latest.
+    from . import __version__
+    latest = None
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            "https://api.github.com/repos/nikhilagrima/claude-pet/releases/latest",
+            headers={"User-Agent": "claude-pet-update"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as r:
+            latest = (json.loads(r.read()).get("tag_name") or "").lstrip("v")
+    except Exception as e:
+        print(f"[claude-pet] could not reach GitHub: {e}")
+
+    print(f"[claude-pet] installed: {__version__}"
+          + (f"    latest: {latest}" if latest else ""))
+    if latest and latest == __version__ and not getattr(args, "force", False):
+        print("[claude-pet] already up to date. Use --force to reinstall anyway.")
+        return 0
+
+    # 2. Detect editable install (pip's own metadata knows).
+    import site
+    from pathlib import Path
+    editable_src = None
+    try:
+        import importlib.metadata as im
+        dist = im.distribution("claude-pet")
+        for f in (dist.files or []):
+            if f.name == "direct_url.json":
+                data = json.loads(Path(dist.locate_file(f)).read_text())
+                if data.get("dir_info", {}).get("editable"):
+                    url = data.get("url", "")
+                    if url.startswith("file://"):
+                        editable_src = url[len("file://"):]
+                    break
+    except Exception:
+        pass
+
+    py = _venv_python()
+    if editable_src and (Path(editable_src) / ".git").exists():
+        print(f"[claude-pet] editable install detected at {editable_src}")
+        print(f"[claude-pet] git pulling…")
+        r = subprocess.run(["git", "-C", editable_src, "pull", "--ff-only"],
+                           capture_output=True, text=True)
+        print(r.stdout.strip() or r.stderr.strip())
+        if r.returncode != 0:
+            print("[claude-pet] git pull failed — resolve manually and re-run.")
+            return 1
+        print(f"[claude-pet] refreshing package (catches new deps)…")
+        subprocess.run([py, "-m", "pip", "install", "-e", editable_src, "--quiet"],
+                       check=False)
+    else:
+        print(f"[claude-pet] installing latest release from GitHub…")
+        subprocess.run([
+            py, "-m", "pip", "install", "--upgrade", "--quiet",
+            "git+https://github.com/nikhilagrima/claude-pet.git",
+        ], check=False)
+
+    # 3. Restart — start's self-replace kicks the old process off :5050.
+    print("[claude-pet] restarting pet…")
+    cmd_start(args)
+    print("[claude-pet] update complete.")
+    return 0
+
+
 def cmd_ergonomics(args):
     """`claude-pet ergonomics <sub>` — status / stats / break-now / snooze / on / off."""
     from .ergonomics import config as ergo_config
@@ -510,6 +586,10 @@ def main():
     sub.add_parser("install-hooks", help="wire Claude Code hooks")
     sub.add_parser("uninstall-hooks", help="remove Claude Code hooks")
     sub.add_parser("doctor", help="diagnose install + auto-fix broken hook paths")
+
+    update_p = sub.add_parser("update", help="pull latest release from GitHub, reinstall, restart")
+    update_p.add_argument("--force", action="store_true",
+                          help="reinstall even if already on latest version")
     h = sub.add_parser("hook", help="internal: handle a hook event")
     h.add_argument("hook_args", nargs="*")
 
@@ -574,6 +654,8 @@ def main():
         return cmd_forget(args)
     if args.cmd == "ergonomics":
         return cmd_ergonomics(args)
+    if args.cmd == "update":
+        return cmd_update(args)
     return 0
 
 

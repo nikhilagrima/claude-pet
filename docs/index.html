@@ -339,6 +339,21 @@ cd $HOME\claude-pet
     </div>
 
   </div>
+
+  <h2 style="margin-top: 60px"><span class="marker">◆</span>Updating</h2>
+  <p class="lede">One command. Auto-detects your install type (git clone vs pip), pulls the latest, restarts the running pet in place.</p>
+  <div class="install-block">
+    <div class="install-card">
+      <h3>Update to the latest release</h3>
+      <p>Idempotent — running when already on latest prints "up to date" and exits. Add <code>--force</code> to reinstall anyway.</p>
+      <pre class="code"><button class="copy" data-clip>Copy</button>claude-pet update</pre>
+    </div>
+    <div class="install-card">
+      <h3>Or fresh-install over the top</h3>
+      <p>Same as the first install — the installer is fully idempotent and safe to re-run.</p>
+      <pre class="code"><button class="copy" data-clip>Copy</button>cd ~/claude-pet && git pull && bash install.command</pre>
+    </div>
+  </div>
 </section>
 
 <section id="tech">

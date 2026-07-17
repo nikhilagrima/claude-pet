@@ -200,6 +200,7 @@ Process lifecycle:
   claude-pet start              Start pet + server detached in the background
   claude-pet stop               Kill running pet
   claude-pet doctor             Diagnose broken hook paths and auto-heal
+  claude-pet update             Pull latest release, reinstall, restart
 
 Hook wiring:
   claude-pet install-hooks      Add Claude Code hook entries to ~/.claude/settings.json
@@ -274,6 +275,30 @@ build.bat         # produces dist\claude-pet.exe
 ```
 
 Uses PyInstaller. Cross-compilation isn't supported — you must build on the target OS.
+
+---
+
+## Updating to a new release
+
+One command — auto-detects your install type, pulls the latest, restarts the pet:
+
+```bash
+claude-pet update
+```
+
+- **Editable install** (git clone): runs `git pull --ff-only` in the source tree, refreshes pip in case new deps landed, then triggers the pet's self-replace so the running process picks up the new code.
+- **Regular pip install**: runs `pip install --upgrade git+https://github.com/nikhilagrima/claude-pet.git`, then restarts.
+- Idempotent — running when already on latest prints `already up to date` and exits. Add `--force` to reinstall anyway.
+
+### Prefer a fresh install?
+
+```bash
+cd ~/claude-pet && git pull && bash install.command   # macOS
+cd ~/claude-pet && git pull && bash install.sh         # Linux
+cd $HOME\claude-pet && git pull && .\install.bat       # Windows
+```
+
+The installer is fully idempotent — safe to run any number of times.
 
 ---
 
