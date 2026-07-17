@@ -517,9 +517,26 @@ class StatsTab(QWidget):
             n_edges = conn.execute("SELECT COUNT(*) c FROM edges").fetchone()["c"]
             n_skills = conn.execute("SELECT COUNT(*) c FROM skills").fetchone()["c"]
             top_tier = memory.top_tier()
-        est_tokens_saved = n_nodes * 40
-        # Cap at 10k tokens for the gauge; anything more = 100% full.
-        saved_pct = min(1.0, est_tokens_saved / 10000)
+
+        # Token-savings estimate — measure a real context block instead of
+        # guessing 40/node. Each SessionStart injects a block up to 800 tokens;
+        # sessions after the FIRST for each project benefit (the first has no
+        # prior memory to inject). If we can't build a block, fall back.
+        per_block_tokens = 0
+        projects = memory.list_projects(limit=1)
+        if projects:
+            try:
+                from . import context as _ctx
+                blk = _ctx.build_context(projects[0]["path"], token_budget=800)
+                per_block_tokens = max(0, len(blk) // 4)
+            except Exception:
+                per_block_tokens = 0
+        sessions_with_memory = max(0, n_sessions - n_projects)
+        est_tokens_saved = sessions_with_memory * per_block_tokens + n_nodes * 40
+        # Gauge cap raised — real accumulations can hit hundreds of k. Log-ish
+        # scale so the ring reads meaningfully even at 500k+.
+        saved_pct = min(1.0, math.log10(max(est_tokens_saved, 1)) / 6.0)
+
         # Graph density: edges relative to max possible n*(n-1)/2.
         density = 0.0
         if n_nodes > 1:
@@ -530,7 +547,14 @@ class StatsTab(QWidget):
         self.cell_tools.set_value(str(n_tool_calls))
         self.cell_skills.set_value(str(n_skills), f"tier: {top_tier}")
 
-        self.gauge_saved.set_data(saved_pct, f"{est_tokens_saved // 1000}k" if est_tokens_saved >= 1000 else str(est_tokens_saved))
+        # Compact gauge label: 1.2k / 45k / 320k etc.
+        def _short(n: int) -> str:
+            if n >= 1_000_000:
+                return f"{n / 1_000_000:.1f}M"
+            if n >= 1_000:
+                return f"{n / 1_000:.1f}k".replace(".0k", "k")
+            return str(n)
+        self.gauge_saved.set_data(saved_pct, _short(est_tokens_saved))
         self.gauge_graph.set_data(density, f"{int(density*100)}%")
 
         self.info.setText(
@@ -542,11 +566,33 @@ class StatsTab(QWidget):
             f"tier   <b style='color:{TIER_COLOR.get(top_tier, NEON['cyan'])}'>"
             f"{TIER_ICON.get(top_tier)}  {top_tier}</b></p>"
             f"<p style='margin:0'>"
-            f"<span style='color:{NEON['cyan']}; font-weight:700'>ESTIMATE</span><br>"
-            f"~{est_tokens_saved:,} tokens saved / session<br>"
-            f"<span style='color:{NEON['text_muted']}'>assumes ~40 tokens per re-read avoided</span></p>"
+            f"<span style='color:{NEON['cyan']}; font-weight:700'>TOKEN SAVINGS</span><br>"
+            f"~<b style='color:{NEON['text']}'>{est_tokens_saved:,}</b> tokens saved cumulative<br>"
+            f"<span style='color:{NEON['text_muted']}'>"
+            f"{sessions_with_memory} sessions × {per_block_tokens} tok injected each"
+            f"</span></p>"
             f"</div>"
         )
+
+
+class _GraphView(QGraphicsView):
+    """QGraphicsView that reports clicks back to its owning GraphTab.
+
+    We can't put click handling on the scene items because the animation
+    layer replaces their rects every frame — cleaner to intercept at the view
+    level, translate to scene coords, and let the tab match against known
+    node positions.
+    """
+
+    def __init__(self, tab: "GraphTab"):
+        super().__init__()
+        self._tab = tab
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            scene_pt = self.mapToScene(event.position().toPoint())
+            self._tab._on_scene_click(scene_pt.x(), scene_pt.y())
+        super().mousePressEvent(event)
 
 
 class GraphTab(QWidget):
@@ -586,11 +632,15 @@ class GraphTab(QWidget):
         layout = QVBoxLayout(self)
         self.info = QLabel(
             "Live memory graph — nodes attract along edges, repel each other. "
-            "Weight = size, kind = color. Hover for details."
+            "Weight = size, kind = color. Click a node for details."
         )
         self.info.setWordWrap(True)
         layout.addWidget(self.info)
-        self.view = QGraphicsView()
+
+        # Split: scene on the left, details panel on the right.
+        split_row = QHBoxLayout()
+        split_row.setSpacing(10)
+        self.view = _GraphView(self)
         self.view.setRenderHint(QPainter.Antialiasing)
         self.view.setStyleSheet(
             f"background: {NEON['bg_deep']}; "
@@ -598,7 +648,30 @@ class GraphTab(QWidget):
         )
         self.view.setDragMode(QGraphicsView.ScrollHandDrag)
         self.view.setCursor(Qt.OpenHandCursor)
-        layout.addWidget(self.view, 1)
+        split_row.addWidget(self.view, 2)
+
+        # Details side-panel: shows the clicked node's kind/value/reinforcements
+        # + list of neighbors. Empty state prompts the user to click.
+        self.details = QLabel(
+            "<p style='color:#5A7099; font-size:12px; font-family:Menlo'>"
+            "CLICK A NODE<br><br>"
+            "Nothing selected. Click any dot in the graph to see its details, "
+            "reinforcement count, and connections."
+            "</p>"
+        )
+        self.details.setTextFormat(Qt.RichText)
+        self.details.setWordWrap(True)
+        self.details.setAlignment(Qt.AlignTop)
+        self.details.setStyleSheet(
+            f"background: {NEON['bg_card']}; "
+            f"border: 1px solid {NEON['border']}; border-radius: 12px; "
+            f"padding: 14px; color: {NEON['text']};"
+        )
+        self.details.setMinimumWidth(220)
+        self.details.setMaximumWidth(320)
+        split_row.addWidget(self.details, 1)
+
+        layout.addLayout(split_row, 1)
 
         # Physics state — populated on refresh().
         self._positions: dict = {}
@@ -804,6 +877,101 @@ class GraphTab(QWidget):
             if src and dst:
                 line.setLine(src[0], src[1], dst[0], dst[1])
 
+    # -------------------------------------------------------------- interaction
+    def _on_scene_click(self, x: float, y: float):
+        """Find the nearest node within its radius and populate details."""
+        best_id, best_dist = None, 1e9
+        for nid, (_item, base_r, _color) in self._items.items():
+            p = self._positions.get(nid)
+            if not p:
+                continue
+            dx, dy = x - p[0], y - p[1]
+            d = (dx * dx + dy * dy) ** 0.5
+            # Add a small padding so tiny nodes are still clickable.
+            if d <= max(base_r, 10) and d < best_dist:
+                best_id, best_dist = nid, d
+        if best_id is None:
+            return
+        node = next((n for n in self._nodes if n["id"] == best_id), None)
+        if not node:
+            return
+        self._render_details(node)
+
+    def _render_details(self, node: dict):
+        kind = node.get("kind", "?")
+        color = self.KIND_COLOR.get(kind, NEON["text"])
+        value = str(node.get("value", "")).strip() or "(no value)"
+        # Neighbors: any edge touching this node in the current graph.
+        neighbors: list[tuple[str, str]] = []
+        for e in self._edges:
+            other_id = None
+            if e.get("src_id") == node["id"]:
+                other_id = e.get("dst_id")
+            elif e.get("dst_id") == node["id"]:
+                other_id = e.get("src_id")
+            if other_id is None:
+                continue
+            other = next((n for n in self._nodes if n["id"] == other_id), None)
+            if not other:
+                continue
+            snippet = str(other.get("value", ""))[:70]
+            neighbors.append((str(e.get("kind") or "related"), snippet))
+
+        html = []
+        html.append(
+            f"<div style='font-family:Menlo; font-size:10px; letter-spacing:1.5px; "
+            f"text-transform:uppercase; color:{color}'>{kind}</div>"
+        )
+        html.append(
+            f"<div style='margin-top:6px; font-size:13px; color:{NEON['text']}; "
+            f"line-height:1.45; word-break:break-word'>{_escape(value)}</div>"
+        )
+        if not self._is_demo:
+            html.append(
+                f"<hr style='border:0; border-top:1px solid {NEON['border']}; margin:12px 0'/>"
+            )
+            html.append(
+                f"<div style='font-family:Menlo; font-size:11px; color:{NEON['text_muted']}'>"
+                f"weight <b style='color:{NEON['cyan']}'>{node.get('weight', 0):.1f}</b>"
+                f" · reinforced <b style='color:{NEON['cyan']}'>"
+                f"{node.get('reinforcements', 1)}×</b>"
+                f"</div>"
+            )
+            if node.get("file_path"):
+                html.append(
+                    f"<div style='margin-top:4px; font-family:Menlo; "
+                    f"font-size:11px; color:{NEON['text_muted']}; word-break:break-all'>"
+                    f"file: {_escape(node['file_path'])}</div>"
+                )
+            if node.get("last_seen"):
+                html.append(
+                    f"<div style='margin-top:4px; font-family:Menlo; "
+                    f"font-size:11px; color:{NEON['text_muted']}'>"
+                    f"last seen: {_escape(node['last_seen'])}</div>"
+                )
+        html.append(
+            f"<hr style='border:0; border-top:1px solid {NEON['border']}; margin:12px 0'/>"
+        )
+        html.append(
+            f"<div style='font-family:Menlo; font-size:10px; letter-spacing:1.5px; "
+            f"text-transform:uppercase; color:{NEON['text_muted']}'>"
+            f"{len(neighbors)} connection{'s' if len(neighbors) != 1 else ''}</div>"
+        )
+        if neighbors:
+            for kind_, snip in neighbors[:8]:
+                html.append(
+                    f"<div style='margin-top:6px; font-size:12px; color:{NEON['text_dim']}'>"
+                    f"<span style='color:{NEON['cyan']}; font-family:Menlo; font-size:10px'>"
+                    f"{kind_}</span> &nbsp; {_escape(snip)}</div>"
+                )
+        else:
+            html.append(
+                f"<div style='margin-top:6px; font-size:11px; color:{NEON['text_muted']}'>"
+                "No connections yet. Nodes gain edges when they appear together in the same session."
+                "</div>"
+            )
+        self.details.setText("".join(html))
+
     def showEvent(self, event):
         super().showEvent(event)
         if self._timer and not self._timer.isActive():
@@ -814,6 +982,12 @@ class GraphTab(QWidget):
         # Stop physics when tab is off-screen — no CPU when not visible.
         if self._timer and self._timer.isActive():
             self._timer.stop()
+
+
+def _escape(text: str) -> str:
+    """Minimal HTML escape for QLabel rich-text content."""
+    return (str(text).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
 
 
 class ErgonomicsTab(QWidget):
