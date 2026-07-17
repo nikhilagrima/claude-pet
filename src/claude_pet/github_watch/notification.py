@@ -13,6 +13,7 @@ event's GitHub URL in the default browser. Click the ✕ to dismiss.
 
 from __future__ import annotations
 
+import sys
 import webbrowser
 from typing import Optional
 
@@ -85,10 +86,13 @@ class GithubActivityToast(QWidget):
         accent = style["accent"]
 
         self.setWindowTitle("Claude Pet — GitHub Activity")
+        # Deliberately NOT using Qt.Tool: on macOS, Qt.Tool windows are
+        # auto-hidden when the owning app deactivates. Since the pet runs
+        # with activationPolicy=accessory it is NEVER the active app, so
+        # Qt.Tool would dismiss the toast the instant it appears.
         self.setWindowFlags(
             Qt.FramelessWindowHint
             | Qt.WindowStaysOnTopHint
-            | Qt.Tool
             | Qt.NoDropShadowWindowHint
         )
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
@@ -179,6 +183,44 @@ class GithubActivityToast(QWidget):
         self._anim.setEndValue(QRect(x, y, self.width(), self.height()))
         self._anim.setEasingCurve(QEasingCurve.OutCubic)
         self._anim.start()
+
+    def showEvent(self, event):
+        """Once the NSWindow exists, apply the macOS pin so it (a) doesn't
+        hide on app deactivate and (b) survives Space switches."""
+        super().showEvent(event)
+        self._pin_this_window_macos()
+
+    def _pin_this_window_macos(self):
+        if sys.platform != "darwin":
+            return
+        try:
+            from AppKit import (
+                NSApp,
+                NSWindowCollectionBehaviorCanJoinAllSpaces,
+                NSWindowCollectionBehaviorStationary,
+                NSWindowCollectionBehaviorFullScreenAuxiliary,
+                NSWindowCollectionBehaviorIgnoresCycle,
+            )
+            behavior = (
+                NSWindowCollectionBehaviorCanJoinAllSpaces
+                | NSWindowCollectionBehaviorStationary
+                | NSWindowCollectionBehaviorFullScreenAuxiliary
+                | NSWindowCollectionBehaviorIgnoresCycle
+            )
+            # Match PetWindow._MACOS_TARGET_LEVEL exactly. Toast sits at the
+            # same level as the pet — both above every user-space window.
+            for w in NSApp().windows():
+                # Only touch OUR windows (untitled or with our title). Others
+                # (e.g. the pet itself) are handled by PetWindow's own pin.
+                try:
+                    w.setLevel_(1500)
+                    w.setCollectionBehavior_(behavior)
+                    w.setHidesOnDeactivate_(False)
+                    w.orderFrontRegardless()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def _tick(self):
         self._remaining = max(0.0, self._remaining - 0.1)
