@@ -657,6 +657,43 @@ def cmd_doctor(args):
     except Exception:
         print("[doctor] pet server on :5050: — not running (start with: claude-pet start)")
 
+    # macOS: verify pyobjc is installed. Without it, the pet drops behind
+    # other windows because _pin_to_top_macos silently no-ops.
+    if sys.platform == "darwin":
+        try:
+            subprocess.check_output(
+                [_venv_python(), "-c", "from AppKit import NSApp"],
+                stderr=subprocess.STDOUT,
+            )
+            print("[doctor] macOS pyobjc-framework-Cocoa: ✓ available "
+                  "(always-on-top will work)")
+        except Exception:
+            ok = False
+            print("[doctor] macOS pyobjc-framework-Cocoa: ✗ MISSING — pet "
+                  "will drop behind other windows.")
+            print(f"[doctor]   fix: {_venv_python()} -m pip install "
+                  "'pyobjc-framework-Cocoa>=10.0'")
+            issues.append("pyobjc-framework-Cocoa not installed on macOS")
+
+        # If the pet is running, verify the pin is currently healthy.
+        try:
+            import urllib.request, json as _json
+            with urllib.request.urlopen(
+                "http://localhost:5050/window-status", timeout=1
+            ) as r:
+                st = _json.loads(r.read())
+            if st.get("pin_healthy") is True:
+                lvl = st["windows"][0]["level"] if st.get("windows") else "?"
+                print(f"[doctor] macOS always-on-top pin: ✓ healthy (level={lvl})")
+            elif "error" not in st:
+                ok = False
+                print("[doctor] macOS always-on-top pin: ✗ unhealthy — "
+                      f"windows: {st.get('windows')}")
+                issues.append("window level not at target")
+        except Exception:
+            # Server may not be running; already reported above.
+            pass
+
     if broken_paths:
         print()
         print("[doctor] re-wiring hooks to point at:", _venv_python())
