@@ -129,7 +129,14 @@ def _last_session_gotcha(project_path: str) -> tuple[str, str] | None:
 
 
 def distill_session(project_path: str) -> list[dict]:
-    """Called by the Stop hook. Writes 0..N nodes; returns what was written."""
+    """Called by the Stop hook. Writes 0..N nodes; returns what was written.
+
+    Also links every pair of nodes written in the same session with a weak
+    `co-occurred` edge. Without this, the graph tab renders a cloud of
+    disconnected dots — every user would see "nodes but no edges" until they
+    hand-imported a .ua/knowledge-graph.json. Co-occurrence is a real signal:
+    facts that surface in the same session are more likely to relate.
+    """
     # Normalize once — the raw SQL reads below must see the same canonical
     # identity the write path stores (macOS /tmp→/private/tmp aliasing).
     project_path = memory.normalize_project_path(project_path)
@@ -148,6 +155,16 @@ def distill_session(project_path: str) -> list[dict]:
         key, val = gotcha
         node_id = memory.upsert_node(project_path, "gotcha", key, redact(val))
         written.append({"id": node_id, "kind": "gotcha", "key": key})
+
+    # Link co-occurring nodes. add_edge is idempotent by (project, src, dst,
+    # kind) and bumps weight on repeat — so a recurring pairing across
+    # sessions strengthens the connection naturally.
+    ids = [n["id"] for n in written if n.get("id")]
+    for i, a in enumerate(ids):
+        for b in ids[i + 1:]:
+            if a == b:
+                continue
+            memory.add_edge(project_path, a, b, "co-occurred", weight_delta=0.5)
 
     return written
 
