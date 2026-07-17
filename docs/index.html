@@ -4,8 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Claude Pet — Open-Source Desktop Companion for Claude Code</title>
-<meta name="description" content="Free, open-source (MIT) desktop pet that reacts to every Claude Code event, remembers every project you code in, learns reusable skills, and coaches your ergonomics with animated exercises. 100% local. macOS, Windows, Linux." />
-<meta name="keywords" content="claude code, claude pet, desktop pet, claude assistant, coding companion, open source, ai coding, developer wellness, ergonomics, break reminder, python, pyside6, anthropic, byteflow" />
+<meta name="description" content="Free, open-source (MIT) desktop pet that reacts to every Claude Code event, remembers every project, learns reusable skills, coaches your ergonomics with animated exercises, and watches your GitHub repos for new commits, PRs, reviews, and deploy status. 100% local. macOS, Windows, Linux." />
+<meta name="keywords" content="claude code, claude pet, desktop pet, claude assistant, coding companion, open source, ai coding, developer wellness, ergonomics, break reminder, github watcher, github notifications desktop, PR review alerts, CI notifications, deploy alerts, python, pyside6, anthropic, byteflow" />
 <meta name="author" content="Byteflow.bot" />
 <meta name="robots" content="index, follow" />
 <link rel="canonical" href="https://nikhilagrima.github.io/claude-pet/" />
@@ -43,10 +43,10 @@
       "applicationCategory": "DeveloperApplication",
       "applicationSubCategory": "Desktop Widget",
       "operatingSystem": "macOS, Windows, Linux",
-      "description": "Open-source desktop pet that reacts to Claude Code events, remembers every project you code in, learns reusable skills, and coaches your ergonomics with animated exercises. 100% local.",
+      "description": "Open-source desktop pet that reacts to Claude Code events, remembers every project, learns reusable skills, coaches your ergonomics with animated exercises, and watches your GitHub repos for commits, PRs, reviews, releases, CI runs, and deploy status. 100% local.",
       "url": "https://nikhilagrima.github.io/claude-pet/",
       "downloadUrl": "https://github.com/nikhilagrima/claude-pet/releases/latest",
-      "softwareVersion": "0.4.8",
+      "softwareVersion": "0.5.0",
       "license": "https://opensource.org/licenses/MIT",
       "isAccessibleForFree": true,
       "offers": {
@@ -61,7 +61,7 @@
       },
       "codeRepository": "https://github.com/nikhilagrima/claude-pet",
       "programmingLanguage": ["Python", "PySide6", "SQLite"],
-      "keywords": "claude code, claude pet, desktop pet, coding companion, developer wellness, ergonomics, open source",
+      "keywords": "claude code, claude pet, desktop pet, coding companion, developer wellness, ergonomics, github watcher, PR review alerts, deploy alerts, open source",
       "screenshot": "https://nikhilagrima.github.io/claude-pet/assets/emotions.png"
     },
     {
@@ -114,6 +114,22 @@
           "acceptedAnswer": {
             "@type": "Answer",
             "text": "Timers count only REAL work time from Claude Code hook events. When the pet's existing 3-minute sleep state kicks in (no activity), all break timers pause. A break is only prompted after the configured active-work threshold (20 min for eyes, 30 for neck, etc.) is crossed. Break prompts are also deferred if you're mid-typing."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How does the GitHub repo watcher work?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Add any repo with 'claude-pet github watch owner/repo' (or via the GITHUB tab in the dashboard). A background thread polls each watched repo every 5 minutes (configurable) using the /events REST endpoint with ETag caching — quiet repos cost 0 rate-limit after the first poll. Push, PullRequest, PullRequestReview, Release, WorkflowRun, DeploymentStatus and Issues events map to matched pet reactions (success/curious/error) with sounds. First poll is silent so you don't get spammed with backlog. Each event fires the pet exactly once, deduped by GitHub event id. Optional personal access token unlocks private repos and 5000 requests/hour."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I need a GitHub token for the watcher?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No — public repos work without any token at 60 requests/hour, which is fine for watching about 5 repos at a 5-minute interval. A personal access token unlocks private repos and raises the limit to 5000/hour. The token is stored only in ~/.claude/claude-pet/config.json (chmod 600) and never leaves your machine except in the Authorization header to api.github.com."
           }
         }
       ]
@@ -238,6 +254,52 @@
     color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase;
   }
 
+  /* -------- watcher demo -------- */
+  .watcher-wrap {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 780px) { .watcher-wrap { grid-template-columns: 1fr; } }
+  .watcher-copy h3 { margin: 0 0 10px; font-family: var(--mono); font-size: 13px; color: var(--cyan); text-transform: uppercase; letter-spacing: 1.5px; }
+  .watcher-copy ul { list-style: none; padding: 0; margin: 0 0 18px; }
+  .watcher-copy ul li {
+    position: relative; padding-left: 22px; margin-bottom: 8px;
+    color: var(--text-dim); font-size: 14px; line-height: 1.55;
+  }
+  .watcher-copy ul li::before {
+    content: ""; position: absolute; left: 4px; top: 8px;
+    width: 6px; height: 6px; border-radius: 50%; background: var(--cyan);
+  }
+  .watcher-copy ul li b { color: var(--text); }
+  .watcher-demo {
+    background: var(--bg-deep); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 18px; font-family: var(--mono);
+    font-size: 12.5px; line-height: 1.75;
+    background-image:
+      repeating-linear-gradient(0deg, transparent 0, transparent 23px, rgba(79, 195, 247, 0.05) 24px);
+  }
+  .watcher-demo .demo-head {
+    display: flex; justify-content: space-between;
+    color: var(--text-muted); font-size: 10.5px; letter-spacing: 1.5px;
+    text-transform: uppercase; margin-bottom: 10px;
+    border-bottom: 1px solid var(--border); padding-bottom: 8px;
+  }
+  .watcher-demo .demo-row {
+    display: grid; grid-template-columns: 18px 60px 1fr;
+    gap: 10px; align-items: baseline;
+    padding: 3px 0;
+  }
+  .watcher-demo .demo-row .ago { color: var(--text-muted); font-size: 11.5px; }
+  .watcher-demo .demo-row .msg { color: var(--text); }
+  .watcher-demo .demo-row.ok  .dot { color: var(--green); }
+  .watcher-demo .demo-row.err .dot { color: var(--red); }
+  .watcher-demo .demo-row.q   .dot { color: var(--cyan); }
+  .watcher-demo .demo-cmd {
+    margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);
+    color: var(--cyan-hi);
+  }
+  .watcher-demo .demo-cmd .prompt { color: var(--text-muted); margin-right: 6px; }
+
   /* -------- install block -------- */
   .install-block {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;
@@ -342,6 +404,7 @@
   </div>
   <div class="links">
     <a href="#features">Features</a>
+    <a href="#watcher">GitHub</a>
     <a href="#ergonomics">Ergonomics</a>
     <a href="#install">Install</a>
     <a href="https://github.com/nikhilagrima/claude-pet" target="_blank" rel="noopener">GitHub ↗</a>
@@ -367,7 +430,7 @@
   </div>
   <div class="badges">
     <img src="https://img.shields.io/github/v/release/nikhilagrima/claude-pet?color=4FC3F7&label=release&style=flat-square" alt="release" />
-    <img src="https://img.shields.io/badge/tests-83%20passing-4ADE80?style=flat-square" alt="tests" />
+    <img src="https://img.shields.io/badge/tests-112%20passing-4ADE80?style=flat-square" alt="tests" />
     <img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-3FA3FF?style=flat-square" alt="platforms" />
     <img src="https://img.shields.io/badge/license-MIT-8CA9D6?style=flat-square" alt="license" />
   </div>
@@ -407,6 +470,55 @@
     <div class="feature">
       <h3>100% local</h3>
       <p>Zero cloud, zero uploads, zero telemetry. Everything lives in <code>~/.claude/claude-pet/memory.sqlite</code> on your machine, gitignored by default. 11 secret-pattern regexes scrub anything sensitive before write.</p>
+    </div>
+  </div>
+
+</section>
+
+<section id="watcher">
+  <h2><span class="marker">◆</span>New in v0.5 · GitHub repo watcher</h2>
+  <p class="lede">
+    Point the pet at any GitHub repo — yours, an upstream you contribute to, a customer's product, an oncall service. When something happens, you hear it and see it, without ever opening a browser tab. No webhooks. No server. No sign-in.
+  </p>
+
+  <div class="watcher-wrap">
+    <div class="watcher-copy">
+
+      <h3>What it watches</h3>
+      <ul>
+        <li><b>New commits</b> — curious chirp + "N new commits on main by @user"</li>
+        <li><b>PRs opened / merged / closed</b> — matched success or error tone</li>
+        <li><b>PR reviews</b> — approved (dings), changes-requested (thud), commented (chirp)</li>
+        <li><b>Releases published</b> — success tone + tag name</li>
+        <li><b>GitHub Actions runs</b> — CI passes get a ✓, failures get a ✗</li>
+        <li><b>Deploy status</b> — per-environment success or failure alerts</li>
+        <li><b>Issues opened</b> — quiet chirp so you don't miss triage</li>
+      </ul>
+
+      <h3>Why it stays out of your way</h3>
+      <ul>
+        <li><b>ETag-cached polling</b> — a quiet repo costs 0 rate-limit budget after the first poll</li>
+        <li><b>First-poll silent</b> — adding a repo doesn't spam you with the last 30 events</li>
+        <li><b>Never twice</b> — deduped by GitHub event id, one alert per real event</li>
+        <li><b>Per-type toggles</b> — silence PushEvent on a chatty repo, keep review + deploy alerts</li>
+        <li><b>Rate-limit safe</b> — 60 req/hr unauth (fine for 5 repos), 5000/hr with an optional PAT</li>
+        <li><b>Token stays local</b> — stored only in <code>~/.claude/claude-pet/config.json</code> (chmod 600), sent only to <code>api.github.com</code></li>
+      </ul>
+    </div>
+
+    <div class="watcher-demo" aria-label="Preview of the GITHUB tab activity feed">
+      <div class="demo-head"><span>GITHUB · ACTIVITY</span><span>LIVE</span></div>
+      <div class="demo-row ok"><span class="dot">●</span><span class="ago">12s</span><span class="msg">CI: build-and-release <b>passed</b></span></div>
+      <div class="demo-row q"><span class="dot">◆</span><span class="ago">1m</span><span class="msg">3 new commits on main by @octocat</span></div>
+      <div class="demo-row ok"><span class="dot">●</span><span class="ago">4m</span><span class="msg">@reviewer <b>approved</b> PR #128</span></div>
+      <div class="demo-row err"><span class="dot">▲</span><span class="ago">9m</span><span class="msg">Deploy to production <b>failed</b></span></div>
+      <div class="demo-row q"><span class="dot">◆</span><span class="ago">14m</span><span class="msg">PR #131 opened: fix auth race condition</span></div>
+      <div class="demo-row ok"><span class="dot">●</span><span class="ago">22m</span><span class="msg">Release <b>v0.5.0</b> published</span></div>
+      <div class="demo-row q"><span class="dot">◆</span><span class="ago">31m</span><span class="msg">Issue #204 opened: sqlite lock on Win11</span></div>
+      <div class="demo-cmd">
+        <div><span class="prompt">$</span>claude-pet github watch nikhilagrima/claude-pet</div>
+        <div><span class="prompt">$</span>claude-pet github events --limit 20</div>
+      </div>
     </div>
   </div>
 
