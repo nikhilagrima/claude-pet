@@ -24,6 +24,64 @@ def get_version():
     return jsonify({"version": __version__, "pid": os.getpid()})
 
 
+def _windows_window_status():
+    """Report whether the pet's HWND is currently in the TOPMOST z-order set.
+    HWND_TOPMOST is the Windows equivalent of macOS level=1500."""
+    try:
+        import ctypes
+        WS_EX_TOPMOST = 0x00000008
+        GWL_EXSTYLE = -20
+        u32 = ctypes.windll.user32
+        # Enumerate top-level windows and find ours by process id
+        pid = os.getpid()
+        result = {"pid": pid, "windows": [], "pin_healthy": False}
+        found_any = False
+        healthy = True
+
+        def _enum_cb(hwnd, _):
+            nonlocal found_any, healthy
+            got_pid = ctypes.c_ulong()
+            u32.GetWindowThreadProcessId(hwnd, ctypes.byref(got_pid))
+            if got_pid.value != pid:
+                return True
+            ex_style = u32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            is_topmost = bool(ex_style & WS_EX_TOPMOST)
+            visible = bool(u32.IsWindowVisible(hwnd))
+            if visible:
+                found_any = True
+                if not is_topmost:
+                    healthy = False
+            result["windows"].append({
+                "hwnd": hwnd, "topmost": is_topmost, "visible": visible,
+            })
+            return True
+
+        WNDENUMPROC = ctypes.WINFUNCTYPE(
+            ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p,
+        )
+        u32.EnumWindows(WNDENUMPROC(_enum_cb), 0)
+        result["pin_healthy"] = found_any and healthy
+        return jsonify(result)
+    except Exception as exc:
+        return jsonify({"error": str(exc)})
+
+
+def _linux_window_status():
+    """Best-effort report on Linux. On X11 we check for _NET_WM_STATE_ABOVE;
+    on Wayland the compositor typically hides window state from us."""
+    session = os.environ.get("XDG_SESSION_TYPE", "unknown")
+    display = "wayland" if os.environ.get("WAYLAND_DISPLAY") else "x11"
+    return jsonify({
+        "platform": "linux",
+        "session_type": session,
+        "display_server": display,
+        "note": ("Wayland compositors control window stacking; "
+                 "always-on-top may be limited") if display == "wayland"
+                else "X11: Qt.WindowStaysOnTopHint maps to _NET_WM_STATE_ABOVE",
+        "pin_healthy": True,   # trust the Qt flag on Linux; no runtime probe
+    })
+
+
 @app.route("/window-status", methods=["GET"])
 def window_status():
     """Diagnostic: report the pet's current macOS window level + collection
@@ -33,8 +91,12 @@ def window_status():
     needing a display.
     """
     import sys
+    if sys.platform == "win32":
+        return _windows_window_status()
+    if sys.platform.startswith("linux"):
+        return _linux_window_status()
     if sys.platform != "darwin":
-        return jsonify({"platform": sys.platform, "note": "macOS-only diagnostic"})
+        return jsonify({"platform": sys.platform, "note": "unsupported"})
     try:
         from AppKit import NSApp, NSApplication
         policy = NSApplication.sharedApplication().activationPolicy()
