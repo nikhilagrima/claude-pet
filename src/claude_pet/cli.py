@@ -204,18 +204,23 @@ def cmd_ergonomics(args):
             print(f"  {mark} {b['ts']}  {b['category']:10}  {b['exercise']}")
         return 0
     if sub == "break-now":
-        # Ask the running pet to open a break via a state POST — the pet's
-        # menu handler picks the most-overdue category.
+        # Ask the running pet to open a break — dedicated /break endpoint that
+        # the pet's polling loop drains within the next ~110 ms tick.
         import urllib.request
+        # Optional 3rd arg = specific exercise slug (e.g. `break-now eye-break`).
+        payload = {}
+        slug = getattr(args, "snooze_min", None)   # positional arg reused
+        if isinstance(slug, str):
+            payload["slug"] = slug
         try:
             urllib.request.urlopen(
                 urllib.request.Request(
-                    "http://localhost:5050/state",
-                    data=b'{"status":"curious","event":"break-now-cli"}',
+                    "http://localhost:5050/break",
+                    data=json.dumps(payload).encode(),
                     headers={"Content-Type": "application/json"}, method="POST",
                 ), timeout=1,
             )
-            print("[claude-pet] break request sent — the pet will open an overlay.")
+            print("[claude-pet] break request queued — overlay opens momentarily.")
         except Exception:
             print("[claude-pet] pet server not responding; start it first.")
         return 0

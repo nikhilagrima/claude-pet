@@ -5,6 +5,7 @@ window flags, which behave correctly on all three platforms (whereas
 Tk's transparency is unreliable on macOS and PyObjC's NSWindow is macOS-only).
 """
 
+import json
 import os
 import sys
 import time
@@ -294,6 +295,39 @@ class PetWindow(QWidget):
         if (self._active_break is None or not self._active_break.isVisible()) \
                 and (self.frame_idx % 30 == 0):
             self._maybe_prompt_break()
+            self._drain_break_queue()
+
+    def _drain_break_queue(self):
+        """Check /break for a CLI/menu-triggered request and open the overlay."""
+        try:
+            import urllib.request as _u
+            with _u.urlopen("http://localhost:5050/break", timeout=0.3) as r:
+                pending = json.loads(r.read())
+            if not pending.get("queued"):
+                return
+            # Ack immediately so we don't reopen on the next tick.
+            _u.urlopen(_u.Request("http://localhost:5050/break/ack",
+                                  data=b'{}', method="POST",
+                                  headers={"Content-Type": "application/json"}),
+                       timeout=0.3).read()
+            slug = pending.get("slug")
+            category = pending.get("category")
+            if slug:
+                from .ergonomics import exercises as _ex
+                ex = _ex.get(slug)
+                if ex:
+                    self._show_break(ex.category, ex.slug)
+                    return
+            if category:
+                from .ergonomics import exercises as _ex
+                ex = _ex.for_category(category)
+                if ex:
+                    self._show_break(ex.category, ex.slug)
+                    return
+            # No specifier → pick the most-overdue.
+            self._trigger_break_now()
+        except Exception:
+            pass    # transient — try again next tick
 
     def _maybe_prompt_break(self):
         try:
