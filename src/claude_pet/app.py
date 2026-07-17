@@ -281,11 +281,19 @@ class PetWindow(QWidget):
         try:
             from AppKit import (
                 NSApp,
+                NSApplication,
                 NSWindowCollectionBehaviorCanJoinAllSpaces,
                 NSWindowCollectionBehaviorStationary,
                 NSWindowCollectionBehaviorFullScreenAuxiliary,
                 NSWindowCollectionBehaviorIgnoresCycle,
             )
+            # Re-assert accessory activation policy — the specific setting
+            # macOS demands before it will render our window above other
+            # apps' fullscreen mode. Without this, level=1500 and
+            # canJoinAllSpaces are BOTH ignored on fullscreen Spaces.
+            ns_app = NSApplication.sharedApplication()
+            if ns_app.activationPolicy() != 1:
+                ns_app.setActivationPolicy_(1)
             behavior = (
                 NSWindowCollectionBehaviorCanJoinAllSpaces
                 | NSWindowCollectionBehaviorStationary
@@ -726,11 +734,17 @@ def _load_app_icon() -> QIcon:
 
 
 def main(show_in_dock: bool = False):
+    app = QApplication(sys.argv)
+    # CRITICAL — activation policy MUST be set AFTER QApplication is
+    # constructed. Qt's initialization re-creates NSApplication and resets
+    # any earlier setActivationPolicy_ call. Without accessory mode (policy
+    # = 1), macOS refuses to render the window above other apps' fullscreen
+    # mode — even with level=1500 and canJoinAllSpaces. Confirmed via
+    # Electron docs: `app.dock.hide()` is required for fullscreen override.
     if show_in_dock:
         _show_in_dock_on_macos()
     else:
         _hide_from_dock_on_macos()
-    app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(True)
     app.setApplicationName("Claude Pet")
     app.setApplicationDisplayName("Claude Pet")
