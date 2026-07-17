@@ -353,16 +353,41 @@ def _fmt_ago(iso: str | None) -> str:
     return f"{int(delta / 86400)}d ago"
 
 
+def _split_repo_args(raw_args: list[str]) -> list[tuple[str, str]]:
+    """Accept `a/b c/d` or `a/b,c/d` or a mix; return unique (owner, repo) list.
+
+    Blank tokens are skipped. Malformed tokens (no slash, empty side) are
+    dropped silently — the caller reports them via the "watched" print line.
+    """
+    out: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for raw in raw_args:
+        # Split on comma OR whitespace within a single arg.
+        for tok in raw.replace(",", " ").split():
+            parsed = _parse_owner_repo(tok)
+            if parsed and parsed not in seen:
+                seen.add(parsed)
+                out.append(parsed)
+    return out
+
+
 def cmd_github(args):
-    """`claude-pet github <sub>` — watch/unwatch/list/events/check/token/enable/disable."""
+    """`claude-pet github <sub>` — watch/unwatch/list/events/check/token/enable/disable.
+
+    `watch`/`unwatch`/`enable`/`disable` accept ONE OR MANY owner/repo slugs
+    (space or comma separated) so you can wire up several repos in one call.
+    """
     from .github_watch import config as gh_config, storage, watcher
     sub = getattr(args, "gh_sub", None) or "list"
-    arg = getattr(args, "gh_arg", None)
+    gh_args = getattr(args, "gh_args", []) or []
+    arg = gh_args[0] if gh_args else None       # for single-arg subs
 
     if sub == "list":
         rows = storage.list_watches()
         if not rows:
-            print("No repos watched yet. Add one with:  claude-pet github watch owner/repo")
+            print("No repos watched yet. Add one or many:")
+            print("  claude-pet github watch owner/repo")
+            print("  claude-pet github watch owner/repo1 owner/repo2 owner/repo3")
             return 0
         print(f"{'REPO':<40} {'ENABLED':<8} {'LAST CHECK':<14} {'STATUS'}")
         for r in rows:
@@ -371,35 +396,52 @@ def cmd_github(args):
             checked = _fmt_ago(r["last_checked"])
             status = r["last_error"] or "ok"
             print(f"{slug:<40} {enabled:<8} {checked:<14} {status}")
+        print(f"\n{len(rows)} repo{'s' if len(rows) != 1 else ''} watched.")
         return 0
 
     if sub == "watch":
-        or_repo = _parse_owner_repo(arg)
-        if not or_repo:
-            print("usage: claude-pet github watch owner/repo")
+        repos = _split_repo_args(gh_args)
+        if not repos:
+            print("usage: claude-pet github watch owner/repo [owner/repo ...]")
             return 2
-        w = storage.add_watch(*or_repo)
-        print(f"[claude-pet] watching {w['owner']}/{w['repo']} "
-              f"(id={w['id']}). Poll interval: {gh_config.poll_interval_s()}s.")
+        added = 0
+        for owner, repo in repos:
+            w = storage.add_watch(owner, repo)
+            added += 1
+            print(f"[claude-pet] watching {w['owner']}/{w['repo']} (id={w['id']})")
+        total = len(storage.list_watches())
+        print(f"[claude-pet] {added} added. Now watching {total} repo"
+              f"{'s' if total != 1 else ''}. Poll interval: "
+              f"{gh_config.poll_interval_s()}s.")
         return 0
 
     if sub == "unwatch":
-        or_repo = _parse_owner_repo(arg)
-        if not or_repo:
-            print("usage: claude-pet github unwatch owner/repo")
+        repos = _split_repo_args(gh_args)
+        if not repos:
+            print("usage: claude-pet github unwatch owner/repo [owner/repo ...]")
             return 2
-        ok = storage.remove_watch(*or_repo)
-        print(f"[claude-pet] {'removed' if ok else 'no such watch'}: {arg}")
-        return 0 if ok else 1
+        removed = 0
+        for owner, repo in repos:
+            if storage.remove_watch(owner, repo):
+                removed += 1
+                print(f"[claude-pet] removed {owner}/{repo}")
+            else:
+                print(f"[claude-pet] no such watch: {owner}/{repo}")
+        return 0 if removed else 1
 
     if sub in ("enable", "disable"):
-        or_repo = _parse_owner_repo(arg)
-        if not or_repo:
-            print(f"usage: claude-pet github {sub} owner/repo")
+        repos = _split_repo_args(gh_args)
+        if not repos:
+            print(f"usage: claude-pet github {sub} owner/repo [owner/repo ...]")
             return 2
-        ok = storage.set_enabled(*or_repo, sub == "enable")
-        print(f"[claude-pet] {'ok' if ok else 'no such watch'}: {arg} {sub}d")
-        return 0 if ok else 1
+        changed = 0
+        for owner, repo in repos:
+            if storage.set_enabled(owner, repo, sub == "enable"):
+                changed += 1
+                print(f"[claude-pet] {owner}/{repo} {sub}d")
+            else:
+                print(f"[claude-pet] no such watch: {owner}/{repo}")
+        return 0 if changed else 1
 
     if sub == "events":
         limit = getattr(args, "limit", 20)
@@ -757,8 +799,8 @@ def main():
         choices=["watch", "unwatch", "list", "events", "check", "token", "enable", "disable"],
     )
     gh_p.add_argument(
-        "gh_arg", nargs="?", default=None,
-        help="owner/repo for watch|unwatch|enable|disable; token value for token; nothing for list|events|check",
+        "gh_args", nargs="*", default=[],
+        help="one or more owner/repo for watch|unwatch|enable|disable; token value for token; nothing for list|events|check",
     )
     gh_p.add_argument("--remove", action="store_true",
                       help="only for 'token': clear the stored PAT")

@@ -68,7 +68,11 @@ def poll_repo(
     url = f"{BASE}/repos/{owner}/{repo}/events?per_page=30"
     s = session or requests
     try:
-        resp = s.get(url, headers=_headers(etag), timeout=5.0, allow_redirects=False)
+        # allow_redirects=True: GitHub returns 301 permanent-redirect for
+        # renamed repos (e.g. anthropics/anthropic-cookbook → anthropics/cookbook)
+        # and the redirect target is the correct api.github.com URL. Following
+        # is safe here since we only ever hit api.github.com.
+        resp = s.get(url, headers=_headers(etag), timeout=5.0, allow_redirects=True)
     except requests.RequestException:
         return PollResult(0, [], etag, None, None, None)
 
