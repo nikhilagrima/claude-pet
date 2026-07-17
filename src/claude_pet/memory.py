@@ -624,7 +624,7 @@ def upsert_skill(
     reinforcements: int | None = None,
 ) -> dict:
     """Insert or reinforce a skill. Level = floor(log2(reinforcements)) + 1.
-    Tier = hatchling(1) / apprentice(2) / senior(3) / ponytail(4+).
+    Tier = hatchling(1) / apprentice(2) / senior(3) / master(4+).
 
     If `reinforcements` is provided, it OVERRIDES the stored count (used when
     promoting a node whose own reinforcement count is authoritative). If
@@ -648,7 +648,7 @@ def upsert_skill(
         # Skills are only created at reinforcements>=2 (see skills.PROMOTION_THRESHOLD),
         # so log2(2)=1 becomes the base level. Cap at 1 for the rare direct-insert case.
         level = max(int(math.floor(math.log2(max(reinforcements, 2)))), 1)
-        tier = {1: "hatchling", 2: "apprentice", 3: "senior"}.get(level, "ponytail")
+        tier = {1: "hatchling", 2: "apprentice", 3: "senior"}.get(level, "master")
         conn.execute(
             """
             INSERT INTO skills (slug, title, description, level, tier,
@@ -709,7 +709,7 @@ def top_tier() -> str:
     if not row or not row["m"]:
         return "hatchling"
     lvl = row["m"]
-    return {1: "hatchling", 2: "apprentice", 3: "senior"}.get(lvl, "ponytail")
+    return {1: "hatchling", 2: "apprentice", 3: "senior"}.get(lvl, "master")
 
 
 if __name__ == "__main__":

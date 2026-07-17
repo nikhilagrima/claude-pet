@@ -14,7 +14,7 @@ The pet still shows 11 emotions, still floats always-on-top, still beeps when a 
 2. **Injects the smallest useful context back into every new Claude Code session** — a ranked, budgeted ≤800-token block emitted from a SessionStart hook.
 3. **Ingests `.ua/knowledge-graph.json`** (Understand-Anything format) as authoritative when present, never rebuilds what's already known.
 4. **Learns skills**: a pattern reinforced ≥2× promotes itself into a real Claude Code skill file at `~/.claude/claude-pet/skills/<slug>/SKILL.md`, valid frontmatter and all.
-5. **Evolves visually** — the mascot gains a tier badge (🥚 hatchling → 🐣 apprentice → 🦉 senior → 🦄 ponytail) based on your top learned skill.
+5. **Evolves visually** — the mascot gains a tier badge (🥚 hatchling → 🐣 apprentice → 🦉 senior → 🦄 master) based on your top learned skill.
 6. **Click to open the memory panel** — Projects / Graph / Skills / Stats, all rendered natively in PySide6, no HTML view engine required.
 
 Everything is 100% local. No cloud. No embeddings. No vector store. No new daemon.
@@ -54,7 +54,7 @@ Verified by `test_v020_rows_preserved_after_migration` — inserts a legacy row,
 
 - **Nothing personal ever leaves your machine.** The DB is at `~/.claude/claude-pet/memory.sqlite`, gitignored, never bundled in the released package.
 - **Secrets are redacted before write.** Every value goes through 11 regexes covering AWS/GitHub/Anthropic/OpenAI/Slack/Google/Stripe/PEM/JWT/Bearer/api-key patterns before it hits SQLite. Test: `test_secrets_never_reach_the_db`.
-- **Never-cut safety rules are appended last to every injection**, adopted verbatim from Ponytail's ladder + carve-outs. Test: `test_safety_block_present_when_no_history`.
+- **Never-cut safety rules are appended last to every injection**, adopted verbatim from Master's ladder + carve-outs. Test: `test_safety_block_present_when_no_history`.
 - **Budget hard cap.** The context builder trims from the end if the body overflows and always reserves room for the safety block. Test: `test_output_never_exceeds_default_budget`.
 - **`.ua` ingestion is read-only + defensive** — every `filePath` runs through `os.path.relpath` even though `.ua` already sanitizes.
 

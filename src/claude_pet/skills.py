@@ -6,7 +6,7 @@ SKILL.md file with valid frontmatter written under
 are picked up by Claude Code's skill discovery.
 
 Levels compound: 2×=hatchling (lvl 1), 4×=apprentice (lvl 2), 8×=senior (lvl 3),
-16×=ponytail (lvl 4+). This is `floor(log2(reinforcements)) + 1`.
+16×=master (lvl 4+). This is `floor(log2(reinforcements)) + 1`.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ def _title_case(slug: str) -> str:
 
 
 def _tier_for_level(level: int) -> str:
-    return {1: "hatchling", 2: "apprentice", 3: "senior"}.get(level, "ponytail")
+    return {1: "hatchling", 2: "apprentice", 3: "senior"}.get(level, "master")
 
 
 def _skill_body(title: str, description: str, tier: str, level: int,

@@ -146,10 +146,10 @@ class StorageV2Tests(unittest.TestCase):
         s = memory.upsert_skill("test-skill", "Test", "desc", "/p", [1], reinforcements=8)
         self.assertEqual(s["level"], 3)
         self.assertEqual(s["tier"], "senior")
-        # 16× → level 4 (ponytail)
+        # 16× → level 4 (master)
         s = memory.upsert_skill("test-skill", "Test", "desc", "/p", [1], reinforcements=16)
         self.assertEqual(s["level"], 4)
-        self.assertEqual(s["tier"], "ponytail")
+        self.assertEqual(s["tier"], "master")
 
 
 if __name__ == "__main__":

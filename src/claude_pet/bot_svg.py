@@ -24,7 +24,7 @@ TIER_BADGE = {
     "hatchling":  ("🥚", "#3FA3FF"),
     "apprentice": ("🐣", "#22D3EE"),
     "senior":     ("🦉", "#60A5FA"),
-    "ponytail":   ("🦄", "#F97316"),
+    "master":   ("🦄", "#F97316"),
 }
 
 
@@ -92,7 +92,7 @@ def make_svg(state, frame=0, time_str=None, override_eye=None, tier=None):
             f'fill="{tcol}" stroke="white" stroke-width="2" opacity="0.95"/>'
         )
         # Level pips: one dot per tier (1..4).
-        tier_index = {"hatchling": 1, "apprentice": 2, "senior": 3, "ponytail": 4}.get(tier, 1)
+        tier_index = {"hatchling": 1, "apprentice": 2, "senior": 3, "master": 4}.get(tier, 1)
         for i in range(tier_index):
             parts.append(
                 f'<circle cx="{bx2 - 3 + i*3:.1f}" cy="{by2:.1f}" r="1.2" fill="white"/>'
