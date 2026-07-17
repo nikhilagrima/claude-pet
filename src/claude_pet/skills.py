@@ -134,6 +134,7 @@ def maybe_promote_node(node: dict) -> dict | None:
 def scan_and_promote(project_path: str) -> list[dict]:
     """Walk every node in the project and promote whichever have earned it.
     Called from the Stop hook after `distill_session` runs."""
+    project_path = memory.normalize_project_path(project_path)
     promoted: list[dict] = []
     with memory.connect() as conn:
         rows = conn.execute(

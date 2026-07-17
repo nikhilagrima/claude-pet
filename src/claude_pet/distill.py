@@ -130,6 +130,9 @@ def _last_session_gotcha(project_path: str) -> tuple[str, str] | None:
 
 def distill_session(project_path: str) -> list[dict]:
     """Called by the Stop hook. Writes 0..N nodes; returns what was written."""
+    # Normalize once — the raw SQL reads below must see the same canonical
+    # identity the write path stores (macOS /tmp→/private/tmp aliasing).
+    project_path = memory.normalize_project_path(project_path)
     written: list[dict] = []
 
     if hint := _dominant_tool_convention(project_path):
@@ -193,6 +196,7 @@ def ingest_ua_graph(project_path: str, graph_dict: dict) -> int:
     Returns the number of nodes actually written."""
     if not isinstance(graph_dict, dict):
         return 0
+    project_path = memory.normalize_project_path(project_path)
     nodes = graph_dict.get("nodes") or []
     edges = graph_dict.get("edges") or []
 

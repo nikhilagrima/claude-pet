@@ -596,6 +596,7 @@ def upsert_skill(
     If `reinforcements` is provided, it OVERRIDES the stored count (used when
     promoting a node whose own reinforcement count is authoritative). If
     omitted, we increment by 1 (the "someone used this skill" path)."""
+    project_path = normalize_project_path(project_path)
     now = _now()
     with connect() as conn:
         existing = conn.execute("SELECT * FROM skills WHERE slug = ?", (slug,)).fetchone()

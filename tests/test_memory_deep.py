@@ -114,9 +114,10 @@ class MemoryDeepTests(unittest.TestCase):
                        "summary": "ua-sourced", "tags": [], "complexity": "simple"}],
             "edges": [],
         })
+        P = memory.normalize_project_path("/p")
         with memory.connect() as conn:
             keys = {r["key"] for r in conn.execute(
-                "SELECT key FROM nodes WHERE project_path='/p'"
+                "SELECT key FROM nodes WHERE project_path=?", (P,)
             ).fetchall()}
         # Both kinds present, different key spaces.
         self.assertTrue(any(k.startswith("ua:") for k in keys),

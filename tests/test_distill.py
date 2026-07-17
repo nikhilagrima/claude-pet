@@ -54,6 +54,7 @@ class DistillTests(unittest.TestCase):
     # ---------------------------------------------------------------- upsert
     def test_same_fact_twice_bumps_weight_not_row_count(self):
         from claude_pet import memory
+        P = memory.normalize_project_path("/p")
         # Seed enough tool_usage to trigger the dominance convention.
         for _ in range(10):
             memory.record_tool_use("Bash", "/p")
@@ -61,8 +62,8 @@ class DistillTests(unittest.TestCase):
         distill_session("/p")
         distill_session("/p")   # second Stop, same session
         with memory.connect() as conn:
-            count = conn.execute("SELECT COUNT(*) c FROM nodes WHERE project_path='/p' AND kind='convention'").fetchone()["c"]
-            row = conn.execute("SELECT weight, reinforcements FROM nodes WHERE project_path='/p' AND kind='convention'").fetchone()
+            count = conn.execute("SELECT COUNT(*) c FROM nodes WHERE project_path=? AND kind='convention'", (P,)).fetchone()["c"]
+            row = conn.execute("SELECT weight, reinforcements FROM nodes WHERE project_path=? AND kind='convention'", (P,)).fetchone()
         self.assertEqual(count, 1)
         self.assertEqual(row["reinforcements"], 2)
         self.assertGreater(row["weight"], 1.0)
@@ -70,12 +71,13 @@ class DistillTests(unittest.TestCase):
     def test_notes_become_decision_nodes(self):
         from claude_pet import memory
         from claude_pet.distill import distill_session
+        P = memory.normalize_project_path("/p")
         memory.add_note("Working on the auth refactor", "/p")
         memory.add_note("Ship before Friday", "/p")
         distill_session("/p")
         with memory.connect() as conn:
             rows = conn.execute(
-                "SELECT value FROM nodes WHERE project_path='/p' AND kind='decision'"
+                "SELECT value FROM nodes WHERE project_path=? AND kind='decision'", (P,)
             ).fetchall()
         values = [r["value"] for r in rows]
         self.assertTrue(any("auth refactor" in v for v in values))
@@ -84,10 +86,11 @@ class DistillTests(unittest.TestCase):
     def test_secrets_never_reach_the_db(self):
         from claude_pet import memory
         from claude_pet.distill import distill_session
+        P = memory.normalize_project_path("/p")
         memory.add_note("api_key='sk-abcdefghijklmnop123456xyz'", "/p")
         distill_session("/p")
         with memory.connect() as conn:
-            rows = conn.execute("SELECT value FROM nodes WHERE project_path='/p'").fetchall()
+            rows = conn.execute("SELECT value FROM nodes WHERE project_path=?", (P,)).fetchall()
         for r in rows:
             self.assertNotIn("sk-abcdefghijklmnop", r["value"])
             self.assertIn("[REDACTED", r["value"])
@@ -117,9 +120,10 @@ class DistillTests(unittest.TestCase):
         n = ingest_ua_graph("/p", graph)
         self.assertEqual(n, 2)
         from claude_pet import memory
+        P = memory.normalize_project_path("/p")
         with memory.connect() as conn:
-            nodes = conn.execute("SELECT kind, key, value, file_path FROM nodes WHERE project_path='/p'").fetchall()
-            edges = conn.execute("SELECT src_id, dst_id, kind FROM edges WHERE project_path='/p'").fetchall()
+            nodes = conn.execute("SELECT kind, key, value, file_path FROM nodes WHERE project_path=?", (P,)).fetchall()
+            edges = conn.execute("SELECT src_id, dst_id, kind FROM edges WHERE project_path=?", (P,)).fetchall()
         kinds = {r["kind"] for r in nodes}
         self.assertEqual(kinds, {"file", "function"})
         self.assertTrue(any(r["file_path"] == "src/auth.ts" for r in nodes))
@@ -136,8 +140,9 @@ class DistillTests(unittest.TestCase):
         ingest_ua_graph("/p", graph)
         ingest_ua_graph("/p", graph)
         from claude_pet import memory
+        P = memory.normalize_project_path("/p")
         with memory.connect() as conn:
-            n = conn.execute("SELECT COUNT(*) c FROM nodes WHERE project_path='/p'").fetchone()["c"]
+            n = conn.execute("SELECT COUNT(*) c FROM nodes WHERE project_path=?", (P,)).fetchone()["c"]
         self.assertEqual(n, 1)
 
     def test_ua_dir_detection(self):

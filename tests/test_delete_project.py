@@ -55,6 +55,8 @@ class DeleteProjectTests(unittest.TestCase):
 
     def test_delete_removes_everything_for_target_project(self):
         from claude_pet import memory
+        PA = memory.normalize_project_path("/proj/A")
+        PB = memory.normalize_project_path("/proj/B")
         self._seed("/proj/A")
         self._seed("/proj/B")  # different project — must survive
         counts = memory.delete_project("/proj/A")
@@ -71,11 +73,11 @@ class DeleteProjectTests(unittest.TestCase):
                 ("tool_usage", "project_path"), ("notes", "project_path"),
                 ("nodes", "project_path"),
             ]:
-                n = conn.execute(f"SELECT COUNT(*) c FROM {table} WHERE {col}='/proj/A'").fetchone()["c"]
+                n = conn.execute(f"SELECT COUNT(*) c FROM {table} WHERE {col}=?", (PA,)).fetchone()["c"]
                 self.assertEqual(n, 0, f"{table} still has /proj/A rows")
         # /proj/B intact.
         with memory.connect() as conn:
-            n = conn.execute("SELECT COUNT(*) c FROM notes WHERE project_path='/proj/B'").fetchone()["c"]
+            n = conn.execute("SELECT COUNT(*) c FROM notes WHERE project_path=?", (PB,)).fetchone()["c"]
             self.assertGreater(n, 0)
 
     def test_delete_drops_skills_unique_to_project(self):
@@ -101,8 +103,8 @@ class DeleteProjectTests(unittest.TestCase):
             row = conn.execute("SELECT project_paths FROM skills WHERE slug='test-skill'").fetchone()
         self.assertIsNotNone(row, "shared skill should survive")
         paths = json.loads(row["project_paths"])
-        self.assertNotIn("/proj/A", paths)
-        self.assertIn("/proj/B", paths)
+        self.assertNotIn(memory.normalize_project_path("/proj/A"), paths)
+        self.assertIn(memory.normalize_project_path("/proj/B"), paths)
 
     def test_forget_cli_is_idempotent(self):
         from claude_pet import cli, memory
