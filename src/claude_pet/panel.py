@@ -59,13 +59,13 @@ TIER_COLOR = {
     "hatchling":  NEON["cyan"],
     "apprentice": NEON["blue"],
     "senior":     NEON["magenta"],
-    "ponytail":   NEON["orange"],
+    "master":   NEON["orange"],
 }
 TIER_ICON = {
     "hatchling":  "◇",
     "apprentice": "◆",
     "senior":     "❖",
-    "ponytail":   "✦",
+    "master":   "✦",
 }
 
 

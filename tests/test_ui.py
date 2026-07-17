@@ -26,13 +26,13 @@ class TierOverlayTests(unittest.TestCase):
             pass  # can't uniquely detect absence
         # Instead: assert the count of <circle> elements is lower without tier
         base = svg.count("<circle")
-        with_tier = make_svg("idle", tier="ponytail").count("<circle")
+        with_tier = make_svg("idle", tier="master").count("<circle")
         self.assertGreater(with_tier, base,
                            "adding a tier must add ≥1 extra <circle> for the badge")
 
     def test_svg_supports_all_tiers(self):
         from claude_pet.bot_svg import make_svg
-        for tier in ("hatchling", "apprentice", "senior", "ponytail"):
+        for tier in ("hatchling", "apprentice", "senior", "master"):
             svg = make_svg("idle", tier=tier)
             self.assertIn("<svg", svg)
             self.assertIn("</svg>", svg)
@@ -47,13 +47,13 @@ class TierOverlayTests(unittest.TestCase):
         self.assertEqual(len(EMOTIONS), 11)
 
     def test_tier_pip_count_matches_level(self):
-        """Tier maps 1→hatchling(1 pip) ... 4→ponytail(4 pips)."""
+        """Tier maps 1→hatchling(1 pip) ... 4→master(4 pips)."""
         from claude_pet.bot_svg import make_svg
         for tier, expected_pips in [
             ("hatchling", 1),
             ("apprentice", 2),
             ("senior", 3),
-            ("ponytail", 4),
+            ("master", 4),
         ]:
             svg = make_svg("idle", tier=tier)
             # Count the small pip circles (r=1.2). Regex is safer than parsing SVG.
@@ -85,7 +85,7 @@ class PanelImportTests(unittest.TestCase):
         self.assertTrue(hasattr(panel, "ErgonomicsTab"))
         self.assertTrue(hasattr(panel, "GithubTab"))
         # Tier icon/color tables must cover all 4 tiers.
-        for tier in ("hatchling", "apprentice", "senior", "ponytail"):
+        for tier in ("hatchling", "apprentice", "senior", "master"):
             self.assertIn(tier, panel.TIER_COLOR)
             self.assertIn(tier, panel.TIER_ICON)
 

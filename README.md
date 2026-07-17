@@ -130,9 +130,9 @@ Claude Pet is no longer just a mascot. It's a **local memory brain**:
 - **Graph memory of every project** — decisions, conventions, fixes, gotchas stored in `~/.claude/claude-pet/memory.sqlite` (never bundled, never synced).
 - **Automatic context injection** — SessionStart hook emits a ≤800-token ranked block back to Claude Code (`weight × recency × FTS5 match`), so Claude sees what matters on turn 1 without you copy-pasting anything.
 - **Ingests `.ua/knowledge-graph.json`** (Understand-Anything format) as authoritative when present.
-- **Self-learning skills** — patterns reinforced ≥2× promote themselves to real `SKILL.md` files under `~/.claude/claude-pet/skills/`, with valid frontmatter Claude Code picks up automatically. Tier evolves: 🥚 hatchling → 🐣 apprentice → 🦉 senior → 🦄 ponytail.
+- **Self-learning skills** — patterns reinforced ≥2× promote themselves to real `SKILL.md` files under `~/.claude/claude-pet/skills/`, with valid frontmatter Claude Code picks up automatically. Tier evolves: 🥚 hatchling → 🐣 apprentice → 🦉 senior → 🦄 master.
 - **Click the pet** → a panel opens with Projects, live Graph, Skills, and Stats (including estimated tokens saved).
-- **Never-cut safety** — the pet's injection always ends with a ruleset that forbids skipping validation, security, or accessibility to save tokens (adopted from the Ponytail agent framework).
+- **Never-cut safety** — the pet's injection always ends with a ruleset that forbids skipping validation, security, or accessibility to save tokens.
 
 ```bash
 claude-pet memory                # summary of the current project

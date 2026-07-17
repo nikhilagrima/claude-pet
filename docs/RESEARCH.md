@@ -22,39 +22,23 @@ v0.2.0's schema is stable and populated on my dev machine. **Migration must pres
 
 ---
 
-## 2. Ponytail — reuse-before-rebuild ladder (adopted)
+## 2. Safety carve-outs for the injected ruleset
 
-Source: https://github.com/DietrichGebert/ponytail (`AGENTS.md`).
+The context block always ends with a small never-cut ruleset:
 
-The ladder is a **prescriptive ordered check** (not a weighted score) that the injected ruleset applies *after* the agent understands the problem:
+> trust-boundary validation, data-loss handling, security, and accessibility are never on the chopping block
 
-```
-1. Does this need to exist?        → skip (YAGNI)
-2. Already in this codebase?       → reuse it
-3. Stdlib does it?                 → use it
-4. Native platform feature?        → use it
-5. Installed dependency?           → use it
-6. One line?                       → one line
-7. Only then: the minimum that works
-```
+This is encoded as a hard line in the injected ruleset. The pet **never** invents shortcuts around: input validation, error handling that prevents data loss, security checks, accessibility.
 
-**Adopted verbatim** into the ≤80-token safety ruleset injected on SessionStart (Phase 3). Key insight: ponytail is *prompt-injection based*, no DB. Its power comes from **compression + always-on presence** in every session, not retrieval.
+### Honest benchmarking method
 
-### Ponytail's "never cut safety" carve-out (adopted)
-
-> "trust-boundary validation, data-loss handling, security, and accessibility are never on the chopping block"
-
-Encoded as a hard line in the injected ruleset. The pet **never** invents shortcuts around: input validation, error handling that prevents data loss, security checks, accessibility.
-
-### Ponytail's honest benchmarking (adopted for Phase 6)
-
-Ponytail's Tier-1 real-agent benchmark:
+Benchmark shape used in Phase 6:
 - 12 tickets on `tiangolo/full-stack-fastapi-template`
 - n=4 runs per ticket, Haiku 4.5
 - Metrics: LOC (`git diff`), tokens, cost, time, safety (binary)
-- Baselines: no-skill, "caveman" terse prose, "yagni+one-liners" prompt
+- Baselines: no-injection, terse prose, minimum-diff prompt
 
-**Our Phase-6 benchmark will use the same structure** but scaled to a 2-session simulation (session 1 = learning; session 2 = with-injection). Real token counts, no marketing math.
+Scaled down to a 2-session simulation (session 1 = learning; session 2 = with-injection). Real token counts, no marketing math.
 
 ---
 
@@ -154,7 +138,7 @@ From the settings.json schema I inspected earlier this session:
 
 - stdin: `{ session_id, tool_name, tool_input, cwd, project_dir }`
 - We use `tool_name` for emotion classification and for `tool_usage` counter increments.
-- Not our injection point (Ponytail injects here for subagents; we only observe).
+- Not our injection point (Master injects here for subagents; we only observe).
 
 ### Stop
 
@@ -209,7 +193,7 @@ CREATE TABLE IF NOT EXISTS skills (
   title         TEXT NOT NULL,
   description   TEXT NOT NULL,
   level         INTEGER NOT NULL DEFAULT 1,        -- floor(log2(reinforcements))+1
-  tier          TEXT NOT NULL,                     -- hatchling|apprentice|senior|ponytail
+  tier          TEXT NOT NULL,                     -- hatchling|apprentice|senior|master
   reinforcements INTEGER NOT NULL DEFAULT 1,
   project_paths TEXT NOT NULL,                     -- JSON array
   source_node_ids TEXT NOT NULL,                   -- JSON array of node ids
@@ -249,7 +233,7 @@ Composition (approximate maximums, enforced by trim-in-order):
 | Top-N ranked nodes | 1800 | ordered by `weight * recency * fts5_match` |
 | Skills manifest | 400 | active skills with tier icons |
 | Already-known files | 200 | short list "already indexed: …" so Claude skips re-reading |
-| Safety ruleset | 100 | ponytail-derived; NEVER trimmed |
+| Safety ruleset | 100 | never-cut carve-outs; NEVER trimmed |
 
 **Ranking formula**: `score = weight * recency_decay * (1 + fts_bm25_boost)`
 
@@ -267,7 +251,7 @@ Trigger: a node's `reinforcements >= 2` → promote to a skill on disk.
 
 - `slug = kebab_case(project_slug + "-" + node.key[:40])`
 - `level = floor(log2(reinforcements)) + 1` → 2×=level 1, 4×=level 2, 8×=level 3, 16×=level 4
-- `tier`: `hatchling`(1), `apprentice`(2), `senior`(3), `ponytail`(4+)
+- `tier`: `hatchling`(1), `apprentice`(2), `senior`(3), `master`(4+)
 - Disk: `~/.claude/claude-pet/skills/<slug>/SKILL.md` — never in the git repo.
 
 **Skill frontmatter**:
@@ -276,7 +260,7 @@ Trigger: a node's `reinforcements >= 2` → promote to a skill on disk.
 name: <Title Case slug>
 description: <the node.value truncated to 300 chars>
 metadata:
-  tier: <hatchling|apprentice|senior|ponytail>
+  tier: <hatchling|apprentice|senior|master>
   level: <int>
   reinforcements: <int>
   source_project: <first project path this pattern was seen in>

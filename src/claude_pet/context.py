@@ -31,7 +31,8 @@ CAPS = {
     "safety":     100,   # never trimmed
 }
 
-# The safety ruleset is adopted from ponytail's ladder + carve-outs.
+# Never-cut carve-outs — validation, security, accessibility must not be
+# compressed away by future ranking changes.
 # Kept tight (≤ 100 chars) so it always fits inside the budget.
 SAFETY_RULES = (
     "Rules: reuse memory before re-reading files; never skip validation, "
@@ -118,7 +119,7 @@ def _skills_section(cap: int, project_path: str) -> str:
     if not skills:
         return ""
     tier_icon = {"hatchling": "🥚", "apprentice": "🐣",
-                 "senior": "🦉", "ponytail": "🦄"}
+                 "senior": "🦉", "master": "🦄"}
     lines = ["## Learned skills"]
     running = len(lines[0]) + 1
     for s in skills[:20]:
