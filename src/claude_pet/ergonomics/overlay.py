@@ -25,14 +25,16 @@ from . import exercises
 from .svg_inline import load_inlined
 
 
-class _CountdownRing(QWidget):
-    """A small circular countdown that empties over `total_s`."""
+class _AutoCloseBar(QWidget):
+    """Thin horizontal progress bar at the top of the overlay — clearly the
+    'auto-close in Ns' meter, so it never competes with any countdown ring
+    baked into the exercise SVG itself."""
 
     def __init__(self, total_s: int, parent=None):
         super().__init__(parent)
         self.total_s = max(1, total_s)
         self.remaining = float(total_s)
-        self.setFixedSize(42, 42)
+        self.setFixedHeight(4)
 
     def set_remaining(self, seconds: float) -> None:
         self.remaining = max(0.0, seconds)
@@ -41,23 +43,13 @@ class _CountdownRing(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        rect = QRectF(4, 4, self.width() - 8, self.height() - 8)
-        # Track (background)
-        pen = QPen(QColor("#334155"))
-        pen.setWidthF(3.5)
-        p.setPen(pen)
-        p.drawArc(rect, 0, 360 * 16)
-        # Active arc (blue → warm as time runs out)
+        # Track
+        p.fillRect(self.rect(), QColor("#1B3A70"))
+        # Filled portion — cyan, cools to orange when <30% left
         pct = self.remaining / self.total_s
-        color = QColor("#3FA3FF") if pct > 0.3 else QColor("#F97316")
-        pen.setColor(color)
-        pen.setCapStyle(Qt.RoundCap)
-        p.setPen(pen)
-        p.drawArc(rect, 90 * 16, int(-360 * 16 * (1 - pct)))
-        # Number
-        p.setPen(QColor("white"))
-        f = p.font(); f.setBold(True); f.setPointSize(10); p.setFont(f)
-        p.drawText(self.rect(), Qt.AlignCenter, f"{int(self.remaining)}s")
+        w = int(self.width() * pct)
+        color = QColor("#4FC3F7") if pct > 0.3 else QColor("#F97316")
+        p.fillRect(0, 0, w, self.height(), color)
 
 
 class BreakOverlay(QDialog):
@@ -85,55 +77,50 @@ class BreakOverlay(QDialog):
         )
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
         self.setAttribute(Qt.WA_TranslucentBackground, False)
-        # Solid card look — the animated SVG is transparent so we need a bg.
+        # Solid card — the SVG's own background is transparent.
         self.setStyleSheet(
-            "QDialog { background: #0A0A1F; border: 1px solid #334155; "
+            "QDialog { background: #061027; border: 1px solid #1B3A70; "
             "border-radius: 14px; } "
-            "QLabel { color: white; } "
-            "QPushButton { background: #1F2937; color: white; border: none; "
-            "padding: 8px 18px; border-radius: 8px; font-weight: 600; } "
-            "QPushButton#done { background: #10B981; } "
-            "QPushButton:hover { background: #374151; } "
-            "QPushButton#done:hover { background: #34D399; }"
+            "QLabel { color: #DDEBFF; background: transparent; "
+            "font-family: 'JetBrains Mono', Menlo, monospace; } "
+            "QPushButton { background: #0F2140; color: #DDEBFF; "
+            "border: 1px solid #1B3A70; padding: 8px 20px; border-radius: 8px; "
+            "font-weight: 600; font-family: 'JetBrains Mono', Menlo, monospace; "
+            "letter-spacing: 0.5px; min-height: 22px; } "
+            "QPushButton:hover { border-color: #4FC3F7; color: #4FC3F7; } "
+            "QPushButton#done { border-color: #4ADE80; color: #4ADE80; } "
+            "QPushButton#done:hover { background: #14532D; }"
         )
-        self.setFixedSize(280, 380)
+        # No title/instruction labels — the SVG has its own title pill and
+        # instruction text baked in. Sizing = SVG + auto-close bar + buttons.
+        self.setFixedSize(288, 320)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(10)
 
-        title = QLabel(self.exercise.name)
-        title.setStyleSheet("font-size: 15px; font-weight: 700;")
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
+        # Thin auto-close bar at the top — clearly the overlay's timer,
+        # visually distinct from any countdown ring baked into the SVG below.
+        self.ring = _AutoCloseBar(self.exercise.duration_s)
+        layout.addWidget(self.ring)
 
-        # The animated SVG — QSvgWidget honors SMIL natively. We inline the
-        # root's CSS custom properties first because Qt's SVG renderer
-        # ignores `var(--name)`; without this, every accent element (monitor
-        # icons, water color, "20 ft" labels, arrow guides, countdown ring)
-        # falls back to no-fill and disappears.
+        # The animated SVG — QSvgWidget honors SMIL natively.
+        # Inline CSS custom properties first (Qt doesn't process var(--…)).
         self.svg = QSvgWidget()
         self.svg.load(QByteArray(load_inlined(self.exercise.svg_path())))
-        self.svg.setFixedSize(240, 240)
+        self.svg.setFixedSize(260, 232)   # ratio matches SVG viewBox
         layout.addWidget(self.svg, alignment=Qt.AlignCenter)
 
-        instr = QLabel(self.exercise.instruction)
-        instr.setStyleSheet("color: #B8B8B8; font-size: 11px;")
-        instr.setWordWrap(True)
-        instr.setAlignment(Qt.AlignCenter)
-        layout.addWidget(instr)
-
         bottom = QHBoxLayout()
-        self.ring = _CountdownRing(self.exercise.duration_s)
-        bottom.addWidget(self.ring)
         bottom.addStretch(1)
-
         self.skip_btn = QPushButton("Skip")
+        self.skip_btn.setCursor(Qt.PointingHandCursor)
         self.skip_btn.clicked.connect(lambda: self._finish(completed=False))
         bottom.addWidget(self.skip_btn)
 
         self.done_btn = QPushButton("Done")
         self.done_btn.setObjectName("done")
+        self.done_btn.setCursor(Qt.PointingHandCursor)
         self.done_btn.clicked.connect(lambda: self._finish(completed=True))
         bottom.addWidget(self.done_btn)
         layout.addLayout(bottom)
