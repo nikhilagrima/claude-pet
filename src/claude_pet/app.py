@@ -132,21 +132,21 @@ def _always_on_top_flags():
     """Flags that keep the pet visible above every app on every OS.
 
     Design notes on the flag combo (macOS is picky):
-    - Qt.SplashScreen used to be here but causes macOS to fade + hide the
-      window when the app deactivates. Removed.
-    - Qt.Tool auto-hides when the owning app loses focus on macOS. Not used.
-    - Qt.ToolTip windows on macOS don't take focus AND don't auto-hide,
-      which is exactly what we want — but Qt.ToolTip is treated as an
-      overlay by some window managers on Linux/Windows and clips.
-      Compromise: FramelessWindowHint + WindowStaysOnTopHint is enough on
-      Linux/Windows; on macOS we ALSO bump NSWindow level to 1000 in
-      _pin_to_top_macos which does the heavy lifting there.
+    - Qt.SplashScreen fades + hides on app deactivate. Not used.
+    - Qt.Tool auto-hides when owning app loses focus on macOS. Not used.
+    - Qt.WindowDoesNotAcceptFocus was tried; over-blocks — better to rely
+      on the macOS-native hidesOnDeactivate=NO in _pin_to_top_macos.
+    On Linux/Windows, FramelessWindowHint + WindowStaysOnTopHint is
+    sufficient. On macOS the heavy lifting is done by _pin_to_top_macos
+    which sets NSWindow.level = 1500 (assistiveTechHighWindow — highest
+    level not reserved by the system) plus a 1-second watchdog that
+    re-asserts everything when Mission Control / fullscreen transitions
+    demote us.
     """
     return (
         Qt.FramelessWindowHint
         | Qt.WindowStaysOnTopHint
         | Qt.NoDropShadowWindowHint
-        | Qt.WindowDoesNotAcceptFocus
     )
 
 
@@ -245,47 +245,31 @@ class PetWindow(QWidget):
           not fullscreen video, not screensaver return, not desktop
           switching — can quietly demote us.
         """
-        if sys.platform != "darwin":
-            return
-        try:
-            from AppKit import (
-                NSApp,
-                NSWindowCollectionBehaviorCanJoinAllSpaces,
-                NSWindowCollectionBehaviorStationary,
-                NSWindowCollectionBehaviorFullScreenAuxiliary,
-                NSWindowCollectionBehaviorIgnoresCycle,
-            )
-            # NSScreenSaverWindowLevel from NSWindow.h.
-            NS_SCREEN_SAVER_WINDOW_LEVEL = 1000
-            behavior = (
-                NSWindowCollectionBehaviorCanJoinAllSpaces
-                | NSWindowCollectionBehaviorStationary
-                | NSWindowCollectionBehaviorFullScreenAuxiliary
-                | NSWindowCollectionBehaviorIgnoresCycle
-            )
-            for w in NSApp().windows():
-                try:
-                    w.setLevel_(NS_SCREEN_SAVER_WINDOW_LEVEL)
-                    w.setCollectionBehavior_(behavior)
-                    w.setHidesOnDeactivate_(False)
-                    w.orderFrontRegardless()
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-        # Install the watchdog once — repeats every 2s, cheap no-op on other
-        # platforms.
+        self._apply_macos_pin(force=True)
+        # Install the watchdog once — repeats every 1s, cheap no-op on other
+        # platforms. 1s > 2s because Sequoia's fullscreen-exit transition
+        # can demote a window inside 1.5s.
         if not getattr(self, "_pin_watchdog", None):
             self._pin_watchdog = QTimer(self)
-            self._pin_watchdog.timeout.connect(self._repin_macos_windows)
-            self._pin_watchdog.start(2000)
+            self._pin_watchdog.timeout.connect(
+                lambda: self._apply_macos_pin(force=False)
+            )
+            self._pin_watchdog.start(1000)
 
-    def _repin_macos_windows(self):
-        """Called every 2s by the watchdog — re-asserts window level.
+    # macOS window level — assistiveTechHighWindow (1500) is the highest
+    # level user-space apps get without system entitlements. Higher than
+    # NSScreenSaverWindowLevel (1000) and NSPopUpMenuWindowLevel (101).
+    # Reference: CGWindowLevelForKey(kCGAssistiveTechHighWindowLevelKey).
+    _MACOS_TARGET_LEVEL = 1500
 
-        Reads the current state instead of relying on a cached flag so if
-        the panel opens mid-session, it gets pinned too."""
+    def _apply_macos_pin(self, *, force: bool):
+        """Assert level + collection behavior on every NSWindow the app owns.
+
+        Called on show, from the watchdog, and from `changeEvent` when the
+        app activation state flips. `force=True` re-applies unconditionally;
+        `force=False` (watchdog path) only rewrites when the level dropped
+        below target — keeps the tick cheap when nothing's wrong.
+        """
         if sys.platform != "darwin":
             return
         try:
@@ -302,10 +286,11 @@ class PetWindow(QWidget):
                 | NSWindowCollectionBehaviorFullScreenAuxiliary
                 | NSWindowCollectionBehaviorIgnoresCycle
             )
+            target = self._MACOS_TARGET_LEVEL
             for w in NSApp().windows():
                 try:
-                    if w.level() < 1000:
-                        w.setLevel_(1000)
+                    if force or w.level() < target:
+                        w.setLevel_(target)
                         w.setCollectionBehavior_(behavior)
                         w.setHidesOnDeactivate_(False)
                         w.orderFrontRegardless()
@@ -313,6 +298,24 @@ class PetWindow(QWidget):
                     pass
         except Exception:
             pass
+
+    def changeEvent(self, event):
+        """Re-pin whenever activation state flips.
+
+        macOS reliably drops the window level on ActivationChange, so this
+        handler catches the demotion within a single event loop tick —
+        faster than waiting for the 1-second watchdog to notice.
+        """
+        try:
+            from PySide6.QtCore import QEvent
+            if event.type() in (
+                QEvent.ActivationChange, QEvent.WindowStateChange,
+                QEvent.ApplicationActivate, QEvent.ApplicationDeactivate,
+            ):
+                self._apply_macos_pin(force=True)
+        except Exception:
+            pass
+        super().changeEvent(event)
 
     def _move_to_bottom_right(self):
         screen = QGuiApplication.primaryScreen().availableGeometry()
