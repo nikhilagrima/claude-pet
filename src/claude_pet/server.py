@@ -36,7 +36,14 @@ def window_status():
     if sys.platform != "darwin":
         return jsonify({"platform": sys.platform, "note": "macOS-only diagnostic"})
     try:
-        from AppKit import NSApp
+        from AppKit import NSApp, NSApplication
+        policy = NSApplication.sharedApplication().activationPolicy()
+        # 0 = regular (has Dock icon; can't stay above other apps' fullscreen)
+        # 1 = accessory (menu bar app; required for fullscreen override)
+        # 2 = prohibited
+        policy_name = {0: "regular", 1: "accessory", 2: "prohibited"}.get(
+            policy, "unknown"
+        )
         windows = []
         for w in NSApp().windows():
             try:
@@ -51,12 +58,14 @@ def window_status():
             except Exception as exc:
                 windows.append({"error": str(exc)})
         target = 1500      # matches PetWindow._MACOS_TARGET_LEVEL
-        ok = all(
+        ok = policy == 1 and all(
             w.get("level", 0) >= target and w.get("hides_on_deactivate") is False
             for w in windows if w.get("visible")
         )
         return jsonify({
             "target_level": target,
+            "activation_policy": policy,
+            "activation_policy_name": policy_name,
             "pin_healthy": ok,
             "windows": windows,
         })
