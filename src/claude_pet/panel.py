@@ -82,23 +82,38 @@ def _apply_neon_glow(widget: QWidget, color: str = None, radius: int = 22,
 
 
 class _CornerBrackets(QWidget):
-    """Purely decorative HUD corner brackets — 4 thin L-shapes at panel corners.
-    Signature FUI element from the reference. Non-interactive, click-through."""
+    """Decorative HUD brackets + tick marks + subtle scanline.
+    Non-interactive, click-through. Animates a slow scanline sweep."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WA_NoSystemBackground)
+        self._scan_pos = 0.0
+        t = QTimer(self); t.timeout.connect(self._advance); t.start(60)
+
+    def _advance(self):
+        self._scan_pos = (self._scan_pos + 0.008) % 1.0
+        self.update()
 
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        pen = QPen(QColor(NEON["cyan"]))
-        pen.setWidthF(1.5)
-        p.setPen(pen)
         w, h = self.width(), self.height()
-        L = 18   # bracket arm length
-        m = 6    # margin from edge
+
+        # === Scanline sweep — a translucent cyan bar drifting top → bottom ===
+        scan_y = int(h * self._scan_pos)
+        for i, alpha in enumerate((28, 18, 10)):
+            c = QColor(NEON["cyan"]); c.setAlpha(alpha)
+            pen = QPen(c); pen.setWidthF(1)
+            p.setPen(pen)
+            p.drawLine(0, scan_y + i, w, scan_y + i)
+
+        # === Thick corner brackets ===
+        pen = QPen(QColor(NEON["cyan"])); pen.setWidthF(2.2)
+        pen.setCapStyle(Qt.RoundCap)
+        p.setPen(pen)
+        L = 28; m = 6
         # top-left
         p.drawLine(m, m, m + L, m); p.drawLine(m, m, m, m + L)
         # top-right
@@ -108,6 +123,25 @@ class _CornerBrackets(QWidget):
         # bottom-right
         p.drawLine(w - m - L, h - m, w - m, h - m)
         p.drawLine(w - m, h - m - L, w - m, h - m)
+
+        # === Tick marks along top + bottom borders ===
+        tick_pen = QPen(QColor(NEON["border_hi"]))
+        tick_pen.setWidthF(1)
+        p.setPen(tick_pen)
+        for x in range(60, w - 60, 12):
+            long_tick = (x // 12) % 5 == 0
+            length = 6 if long_tick else 3
+            p.drawLine(x, 3, x, 3 + length)         # top
+            p.drawLine(x, h - 3, x, h - 3 - length) # bottom
+
+        # === Corner data readouts (tiny monospace coords) ===
+        p.setPen(QColor(NEON["text_dim"]))
+        f = p.font(); f.setPointSize(7); f.setFamily("Menlo"); f.setBold(True)
+        p.setFont(f)
+        p.drawText(m + L + 8, m + 10, "SYS.OK")
+        p.drawText(w - m - L - 60, m + 10, "SEC.NORMAL")
+        p.drawText(m + L + 8, h - m - 4, "TX ●●●")
+        p.drawText(w - m - L - 50, h - m - 4, "RX ●●●")
 
 
 class _StatusStrip(QWidget):
@@ -402,15 +436,120 @@ class SkillsTab(QWidget):
             self.list.addItem("No skills learned yet — keep coding, patterns get promoted at 2× reinforcement.")
 
 
+class _GaugeRing(QWidget):
+    """Circular percentage meter like the reference '89% MISSION PROGRESS'."""
+
+    def __init__(self, label: str, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(140, 140)
+        self._pct = 0.0
+        self._label = label
+        self._value = "0"
+
+    def set_data(self, pct: float, value_text: str):
+        self._pct = max(0.0, min(1.0, pct))
+        self._value = value_text
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        rect = QRectF(10, 10, self.width() - 20, self.height() - 20)
+        # Outer ring track
+        pen = QPen(QColor(NEON["border"])); pen.setWidthF(2)
+        p.setPen(pen); p.drawArc(rect, 0, 360 * 16)
+        # Filled arc
+        pen = QPen(QColor(NEON["cyan"])); pen.setWidthF(4); pen.setCapStyle(Qt.RoundCap)
+        p.setPen(pen)
+        p.drawArc(rect, 90 * 16, int(-360 * 16 * self._pct))
+        # Inner tick marks
+        p.save()
+        p.translate(self.width() / 2, self.height() / 2)
+        tick_pen = QPen(QColor(NEON["border_hi"])); tick_pen.setWidthF(1)
+        p.setPen(tick_pen)
+        for i in range(60):
+            p.rotate(6)
+            long_t = i % 5 == 0
+            p.drawLine(0, -50, 0, -50 + (5 if long_t else 2))
+        p.restore()
+        # Value + label
+        p.setPen(QColor(NEON["cyan"]))
+        f = p.font(); f.setPointSize(20); f.setBold(True); f.setFamily("Menlo"); p.setFont(f)
+        p.drawText(self.rect(), Qt.AlignCenter, self._value)
+        p.setPen(QColor(NEON["text_dim"]))
+        f2 = p.font(); f2.setPointSize(8); f2.setFamily("Menlo"); p.setFont(f2)
+        fm_rect = self.rect().adjusted(0, 32, 0, 0)
+        p.drawText(fm_rect, Qt.AlignHCenter | Qt.AlignTop, self._label.upper())
+
+
+class _DataCell(QWidget):
+    """A hex-bordered stat card — label above, big value below."""
+
+    def __init__(self, label: str, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(160, 88)
+        self._label = label
+        self._value = "—"
+        self._sub = ""
+
+    def set_value(self, value: str, sub: str = ""):
+        self._value = value; self._sub = sub; self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        # Card background
+        p.setPen(QPen(QColor(NEON["border"]), 1))
+        p.setBrush(QColor(NEON["bg_card"]))
+        p.drawRoundedRect(self.rect().adjusted(2, 2, -2, -2), 8, 8)
+        # Left accent bar (signature HUD element)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(NEON["cyan"]))
+        p.drawRect(2, 8, 3, self.height() - 16)
+        # Label
+        p.setPen(QColor(NEON["text_dim"]))
+        f = p.font(); f.setPointSize(8); f.setBold(True); f.setFamily("Menlo"); p.setFont(f)
+        p.drawText(14, 22, self._label.upper())
+        # Value
+        p.setPen(QColor(NEON["cyan"]))
+        f2 = p.font(); f2.setPointSize(22); f2.setBold(True); p.setFont(f2)
+        p.drawText(14, 56, self._value)
+        # Sub
+        if self._sub:
+            p.setPen(QColor(NEON["text_muted"]))
+            f3 = p.font(); f3.setPointSize(8); f3.setBold(False); p.setFont(f3)
+            p.drawText(14, 74, self._sub)
+
+
 class StatsTab(QWidget):
     def __init__(self):
         super().__init__()
-        self.layout = QVBoxLayout(self)
-        self.label = QLabel()
-        self.label.setTextFormat(Qt.RichText)
-        self.label.setWordWrap(True)
-        self.layout.addWidget(self.label)
-        self.layout.addStretch(1)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(14, 14, 14, 14)
+        outer.setSpacing(14)
+
+        # Top row: 4 data cells
+        cells = QHBoxLayout(); cells.setSpacing(10)
+        self.cell_projects = _DataCell("Projects")
+        self.cell_sessions = _DataCell("Sessions")
+        self.cell_tools    = _DataCell("Tool calls")
+        self.cell_skills   = _DataCell("Skills")
+        for c in (self.cell_projects, self.cell_sessions, self.cell_tools, self.cell_skills):
+            cells.addWidget(c)
+        cells.addStretch(1)
+        outer.addLayout(cells)
+
+        # Middle: 2 gauges + graph info
+        gauges = QHBoxLayout(); gauges.setSpacing(20)
+        self.gauge_saved = _GaugeRing("tokens saved")
+        self.gauge_graph = _GaugeRing("graph density")
+        gauges.addWidget(self.gauge_saved)
+        gauges.addWidget(self.gauge_graph)
+        self.info = QLabel()
+        self.info.setTextFormat(Qt.RichText); self.info.setWordWrap(True)
+        gauges.addWidget(self.info, 1)
+        outer.addLayout(gauges)
+        outer.addStretch(1)
         self.refresh()
 
     def refresh(self):
@@ -422,21 +561,36 @@ class StatsTab(QWidget):
             n_edges = conn.execute("SELECT COUNT(*) c FROM edges").fetchone()["c"]
             n_skills = conn.execute("SELECT COUNT(*) c FROM skills").fetchone()["c"]
             top_tier = memory.top_tier()
-        # Rough "tokens saved" estimate: each recalled node ≈ 40 tokens that would
-        # otherwise be spent re-reading the file to rediscover it. Conservative floor.
         est_tokens_saved = n_nodes * 40
-        html = (
-            f"<h2>Claude Pet stats</h2>"
-            f"<p><b>Projects tracked:</b> {n_projects}<br>"
-            f"<b>Total sessions:</b> {n_sessions}<br>"
-            f"<b>Total tool calls:</b> {n_tool_calls}<br>"
-            f"<b>Memory graph:</b> {n_nodes} nodes, {n_edges} edges<br>"
-            f"<b>Skills learned:</b> {n_skills}<br>"
-            f"<b>Highest tier:</b> {TIER_ICON.get(top_tier)} <b>{top_tier}</b></p>"
-            f"<hr><p style='color:#94A3B8'>Estimated tokens saved by injection: "
-            f"<b>~{est_tokens_saved:,}</b> (assuming ~40 tokens per re-read avoided)</p>"
+        # Cap at 10k tokens for the gauge; anything more = 100% full.
+        saved_pct = min(1.0, est_tokens_saved / 10000)
+        # Graph density: edges relative to max possible n*(n-1)/2.
+        density = 0.0
+        if n_nodes > 1:
+            density = min(1.0, n_edges / (n_nodes * (n_nodes - 1) / 2))
+
+        self.cell_projects.set_value(str(n_projects))
+        self.cell_sessions.set_value(str(n_sessions))
+        self.cell_tools.set_value(str(n_tool_calls))
+        self.cell_skills.set_value(str(n_skills), f"tier: {top_tier}")
+
+        self.gauge_saved.set_data(saved_pct, f"{est_tokens_saved // 1000}k" if est_tokens_saved >= 1000 else str(est_tokens_saved))
+        self.gauge_graph.set_data(density, f"{int(density*100)}%")
+
+        self.info.setText(
+            f"<div style='color:{NEON['text_dim']}; font-family: Menlo; font-size: 11px;'>"
+            f"<p style='margin:0 0 8px 0'>"
+            f"<span style='color:{NEON['cyan']}; font-weight:700'>MEMORY.GRAPH</span><br>"
+            f"nodes  <b style='color:{NEON['text']}'>{n_nodes}</b> &nbsp; · &nbsp; "
+            f"edges  <b style='color:{NEON['text']}'>{n_edges}</b><br>"
+            f"tier   <b style='color:{TIER_COLOR.get(top_tier, NEON['cyan'])}'>"
+            f"{TIER_ICON.get(top_tier)}  {top_tier}</b></p>"
+            f"<p style='margin:0'>"
+            f"<span style='color:{NEON['cyan']}; font-weight:700'>ESTIMATE</span><br>"
+            f"~{est_tokens_saved:,} tokens saved / session<br>"
+            f"<span style='color:{NEON['text_muted']}'>assumes ~40 tokens per re-read avoided</span></p>"
+            f"</div>"
         )
-        self.label.setText(html)
 
 
 class GraphTab(QWidget):
