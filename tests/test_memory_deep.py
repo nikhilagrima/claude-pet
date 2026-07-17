@@ -158,7 +158,8 @@ class MemoryDeepTests(unittest.TestCase):
         from claude_pet import memory
         s = memory.project_summary("/nope/nowhere")
         self.assertFalse(s["known"])
-        self.assertEqual(s["path"], "/nope/nowhere")
+        # Path is normalized (Windows: D:\nope\nowhere) — compare canonically.
+        self.assertEqual(s["path"], memory.normalize_project_path("/nope/nowhere"))
 
     def test_upsert_node_with_unicode_and_multiline(self):
         from claude_pet import memory
