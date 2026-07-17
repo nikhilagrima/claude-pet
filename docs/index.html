@@ -582,7 +582,10 @@ cd $HOME\claude-pet
    id="star-badge" aria-label="Star Claude Pet on GitHub">
   <span class="star-icon">★</span>
   <span>Star on GitHub</span>
-  <span class="star-count" id="star-count">—</span>
+  <!-- Count pill is hidden until we successfully fetch the real number from
+       the GitHub API — never show "—" or a stale value. If the fetch fails
+       (rate limit / network), the badge simply shows "★ Star on GitHub". -->
+  <span class="star-count" id="star-count" style="display: none"></span>
 </a>
 
 <footer>
@@ -597,23 +600,32 @@ cd $HOME\claude-pet
 
 <script>
   // ---- Floating GitHub star badge: fetch live count, reveal after 4s ----
+  //
+  // Reliability contract: the pill NEVER shows a wrong number. It stays
+  // hidden until we've confirmed a fresh integer from the GitHub API. On
+  // rate limit / CORS / network failure the badge just reads "★ Star on
+  // GitHub" without a count — better a missing number than a wrong one.
   (function () {
     const badge = document.getElementById('star-badge');
     const countEl = document.getElementById('star-count');
-    // Fetch current star count. GitHub API is public + CORS-friendly.
+    function showCount(n) {
+      if (typeof n !== 'number' || isNaN(n) || n < 0) return;
+      countEl.textContent = n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+      countEl.style.display = '';
+    }
+    // GitHub API is public + CORS-friendly, 60 req/hr unauthenticated.
     fetch('https://api.github.com/repos/nikhilagrima/claude-pet',
           { headers: { 'Accept': 'application/vnd.github+json' } })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data && typeof data.stargazers_count === 'number') {
-          const n = data.stargazers_count;
-          countEl.textContent = n >= 1000 ? (n / 1000).toFixed(1) + 'k' : n;
-        }
+      .then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);   // rate-limited etc.
+        return r.json();
       })
-      .catch(() => { /* silent — badge still shows "—" */ });
-    // Reveal after 4s so it doesn't hijack the first paint.
+      .then(data => showCount(data && data.stargazers_count))
+      .catch(() => { /* silent — pill stays hidden, badge label alone */ });
+
+    // Reveal badge after 4 s so it doesn't hijack the first paint.
     setTimeout(() => badge.classList.add('visible'), 4000);
-    // Auto-hide once dismissed via keyboard Escape.
+    // Dismiss with Escape.
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') badge.classList.remove('visible');
     });
