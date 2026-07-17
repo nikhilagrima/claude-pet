@@ -24,6 +24,46 @@ def get_version():
     return jsonify({"version": __version__, "pid": os.getpid()})
 
 
+@app.route("/window-status", methods=["GET"])
+def window_status():
+    """Diagnostic: report the pet's current macOS window level + collection
+    behavior + hidesOnDeactivate for each NSWindow the app owns.
+
+    Used to verify the always-on-top pin from outside the process without
+    needing a display.
+    """
+    import sys
+    if sys.platform != "darwin":
+        return jsonify({"platform": sys.platform, "note": "macOS-only diagnostic"})
+    try:
+        from AppKit import NSApp
+        windows = []
+        for w in NSApp().windows():
+            try:
+                windows.append({
+                    "title": str(w.title() or ""),
+                    "level": int(w.level()),
+                    "collection_behavior": int(w.collectionBehavior()),
+                    "hides_on_deactivate": bool(w.hidesOnDeactivate()),
+                    "visible": bool(w.isVisible()),
+                    "on_active_space": bool(w.isOnActiveSpace()),
+                })
+            except Exception as exc:
+                windows.append({"error": str(exc)})
+        target = 1500      # matches PetWindow._MACOS_TARGET_LEVEL
+        ok = all(
+            w.get("level", 0) >= target and w.get("hides_on_deactivate") is False
+            for w in windows if w.get("visible")
+        )
+        return jsonify({
+            "target_level": target,
+            "pin_healthy": ok,
+            "windows": windows,
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)})
+
+
 @app.route("/break", methods=["POST"])
 def enqueue_break():
     """POST {category, slug} → the pet will open an overlay on its next tick.
