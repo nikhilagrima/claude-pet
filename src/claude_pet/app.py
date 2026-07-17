@@ -246,15 +246,21 @@ class PetWindow(QWidget):
           switching — can quietly demote us.
         """
         self._apply_macos_pin(force=True)
-        # Install the watchdog once — repeats every 1s, cheap no-op on other
-        # platforms. 1s > 2s because Sequoia's fullscreen-exit transition
-        # can demote a window inside 1.5s.
+        # Install the watchdog once — 250ms tick, cheap because the
+        # force=False fast path early-exits when level is already at target.
+        # 250ms because Sequoia's fullscreen-enter transition can leave the
+        # pet stranded on the old Space for up to ~500ms without a re-pin.
         if not getattr(self, "_pin_watchdog", None):
             self._pin_watchdog = QTimer(self)
             self._pin_watchdog.timeout.connect(
                 lambda: self._apply_macos_pin(force=False)
             )
-            self._pin_watchdog.start(1000)
+            self._pin_watchdog.start(250)
+        # Register for NSWorkspace notifications so we re-pin the INSTANT
+        # macOS activates a different Space (e.g. another app entered
+        # fullscreen). Without this, the pet is invisible on the new Space
+        # until the next watchdog tick.
+        self._install_space_change_observer()
 
     # macOS window level — assistiveTechHighWindow (1500) is the highest
     # level user-space apps get without system entitlements. Higher than
@@ -298,6 +304,45 @@ class PetWindow(QWidget):
                     pass
         except Exception:
             pass
+
+    def _install_space_change_observer(self):
+        """Register a PyObjC observer for NSWorkspaceActiveSpaceDidChangeNotification.
+
+        Without this, when the user (or another app) switches to a new Space
+        or enters fullscreen, the pet stays on the ORIGINAL Space until the
+        watchdog next fires. The user sees the pet vanish. The observer
+        fires the very moment the Space activates and we re-pin instantly.
+        """
+        if sys.platform != "darwin":
+            return
+        if getattr(self, "_space_observer", None) is not None:
+            return
+        try:
+            from AppKit import NSWorkspace
+            from Foundation import NSObject
+
+            # Capture `self` (the PetWindow) for use inside the callback.
+            pet = self
+
+            class _SpaceObserver(NSObject):
+                # PyObjC signature: void (id) — accepts one NSNotification arg.
+                def onSpaceChange_(self_, _notification):
+                    try:
+                        pet._apply_macos_pin(force=True)
+                    except Exception:
+                        pass
+
+            observer = _SpaceObserver.new()
+            NSWorkspace.sharedWorkspace().notificationCenter().addObserver_selector_name_object_(
+                observer,
+                b"onSpaceChange:",
+                "NSWorkspaceActiveSpaceDidChangeNotification",
+                None,
+            )
+            # Keep strong refs so Python doesn't GC them and cancel the reg.
+            self._space_observer = observer
+        except Exception as exc:
+            print(f"[pet] space observer install failed: {exc}")
 
     def changeEvent(self, event):
         """Re-pin whenever activation state flips.
