@@ -75,16 +75,19 @@ class TokenSavingsEstimateTests(unittest.TestCase):
         """Recreate the panel's formula without needing Qt."""
         from claude_pet import memory
         with memory.connect() as conn:
-            n_projects = conn.execute("SELECT COUNT(*) c FROM projects").fetchone()["c"]
-            n_sessions = conn.execute("SELECT COUNT(*) c FROM sessions").fetchone()["c"]
             n_nodes = conn.execute("SELECT COUNT(*) c FROM nodes").fetchone()["c"]
+            per_project_counts = [
+                r["session_count"] for r in conn.execute(
+                    "SELECT session_count FROM projects"
+                ).fetchall()
+            ]
         per_block_tokens = 0
         projects = memory.list_projects(limit=1)
         if projects:
             from claude_pet import context as ctx_mod
             per_block_tokens = max(0, len(ctx_mod.build_context(
                 projects[0]["path"], token_budget=800)) // 4)
-        sessions_with_memory = max(0, n_sessions - n_projects)
+        sessions_with_memory = sum(max(0, c - 1) for c in per_project_counts)
         return sessions_with_memory * per_block_tokens + n_nodes * 40
 
     def test_empty_db_zero_savings(self):
@@ -98,6 +101,30 @@ class TokenSavingsEstimateTests(unittest.TestCase):
         # Only 1 session, 1 project → sessions_with_memory = 0. Node baseline only.
         est = self._stats_estimate()
         self.assertEqual(est, 40)     # 1 node × 40
+
+    def test_mixed_project_counts_do_not_wrongly_subtract(self):
+        """Regression: real-user DB had 3 sessions, 4 projects (2 with 0
+        sessions). Old formula (n_sessions - n_projects) gave -1 → clamped to
+        0, hiding real savings. Correct formula sums max(0, count-1) per
+        project — should give ≥ 1 when at least one project has ≥ 2 sessions.
+        """
+        from claude_pet import memory
+        # Mix: one project with 2 real sessions, one with 1, two with 0 (auto-
+        # registered by hooks but never produced a session).
+        pp_active = "/tmp/active"
+        pp_solo = "/tmp/solo"
+        memory.record_session_start(pp_active)
+        memory.record_session_start(pp_active)   # 2nd session → memory injected
+        memory.record_session_start(pp_solo)
+        memory.upsert_node(pp_active, "decision", "k1", "a decision")
+        # Two "cold" projects with zero real sessions.
+        with memory.connect() as c:
+            c.execute("INSERT INTO projects (path, name, first_seen, last_seen, session_count) VALUES ('/tmp/cold1', 'c1', 't', 't', 0)")
+            c.execute("INSERT INTO projects (path, name, first_seen, last_seen, session_count) VALUES ('/tmp/cold2', 'c2', 't', 't', 0)")
+        est = self._stats_estimate()
+        self.assertGreater(est, 40,
+                           f"expected some cumulative savings from the active "
+                           f"project's 2nd session, got {est}")
 
     def test_repeat_sessions_scale_savings_upward(self):
         """N sessions of the same project should scale token savings linearly

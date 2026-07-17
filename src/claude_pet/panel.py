@@ -521,7 +521,10 @@ class StatsTab(QWidget):
         # Token-savings estimate — measure a real context block instead of
         # guessing 40/node. Each SessionStart injects a block up to 800 tokens;
         # sessions after the FIRST for each project benefit (the first has no
-        # prior memory to inject). If we can't build a block, fall back.
+        # prior memory to inject). Correct formula: per-project max(0, count-1)
+        # summed — NOT global (n_sessions - n_projects), which is wrong when
+        # some projects have 0 sessions (auto-registered by a hook that never
+        # produced a real session).
         per_block_tokens = 0
         projects = memory.list_projects(limit=1)
         if projects:
@@ -531,7 +534,13 @@ class StatsTab(QWidget):
                 per_block_tokens = max(0, len(blk) // 4)
             except Exception:
                 per_block_tokens = 0
-        sessions_with_memory = max(0, n_sessions - n_projects)
+        with memory.connect() as conn:
+            per_project_counts = [
+                r["session_count"] for r in conn.execute(
+                    "SELECT session_count FROM projects"
+                ).fetchall()
+            ]
+        sessions_with_memory = sum(max(0, c - 1) for c in per_project_counts)
         est_tokens_saved = sessions_with_memory * per_block_tokens + n_nodes * 40
         # Gauge cap raised — real accumulations can hit hundreds of k. Log-ish
         # scale so the ring reads meaningfully even at 500k+.
