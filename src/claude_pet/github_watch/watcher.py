@@ -21,6 +21,22 @@ _rate_block_until: float = 0.0
 # the configured interval even when the tick loop is fast).
 _next_poll_at: dict[int, float] = {}
 
+# Per (watch_id, event_type) last-alerted timestamp. Used by the cooldown
+# to suppress duplicate alerts within a short window — e.g. rapid WIP
+# pushes triggering N PushEvents in a minute should only ding once.
+COOLDOWN_SECONDS = 300      # 5 minutes; matches AUDIT top-5 #5
+_last_alerted_at: dict[tuple[int, str], float] = {}
+
+
+def _in_cooldown(watch_id: int, event_type: str) -> bool:
+    key = (watch_id, event_type)
+    last = _last_alerted_at.get(key, 0.0)
+    return (time.time() - last) < COOLDOWN_SECONDS
+
+
+def _mark_alerted(watch_id: int, event_type: str) -> None:
+    _last_alerted_at[(watch_id, event_type)] = time.time()
+
 
 def _due(watch: dict, now: float) -> bool:
     if not watch.get("enabled"):
@@ -114,6 +130,15 @@ def poll_one(watch: dict) -> dict:
         reaction = classified["reaction"]
         if not config.alert_type_enabled(et):
             reaction = "none"
+        else:
+            # Per-repo per-type cooldown — stops WIP-push spam and rapid
+            # re-review dinging. If we just fired an alert for this
+            # (watch, event_type) inside the cooldown window, downgrade
+            # to reaction='none' (recorded for the feed, no toast/sound).
+            if _in_cooldown(watch["id"], et):
+                reaction = "none"
+            else:
+                _mark_alerted(watch["id"], et)
         inserted = storage.record_event(
             watch_id=watch["id"],
             event_id=classified["event_id"],
@@ -165,7 +190,8 @@ def rate_block_until_ts() -> float:
 
 
 def reset_state() -> None:
-    """For tests: clear the module-level schedule + rate-block."""
+    """For tests: clear the module-level schedule + rate-block + cooldown."""
     global _rate_block_until
     _rate_block_until = 0.0
     _next_poll_at.clear()
+    _last_alerted_at.clear()

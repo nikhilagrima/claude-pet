@@ -1,6 +1,9 @@
 import os
+import secrets
 import signal
 import threading
+from functools import wraps
+from pathlib import Path
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -16,6 +19,72 @@ state = {"status": "idle", "last_event": None}
 # loop drains it and opens a Qt overlay. Simpler than adding an IPC channel;
 # reuses the existing Flask + polling pipeline the pet already runs.
 _pending_break = {"queued": False, "category": None, "slug": None}
+
+
+# ------ shared-secret token for write endpoints ------------------------------
+# The pet's Flask server binds to 127.0.0.1 so remote hosts can't reach it,
+# but ANY local process (a misbehaved dev tool, curious script, malware)
+# could POST /shutdown and kill the pet. Guard write endpoints with a token
+# written to ~/.claude/claude-pet/server.token (chmod 600). Read endpoints
+# (/version, /state GET, /window-status) stay open for observability.
+_TOKEN_PATH = Path.home() / ".claude" / "claude-pet" / "server.token"
+
+
+def _read_or_create_token() -> str:
+    """Return the shared secret, generating it on first boot. Chmod 600 on
+    POSIX so nobody but the user can read it."""
+    try:
+        _TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+        if _TOKEN_PATH.exists():
+            tok = _TOKEN_PATH.read_text().strip()
+            if len(tok) >= 32:
+                return tok
+        tok = secrets.token_urlsafe(32)
+        _TOKEN_PATH.write_text(tok)
+        try:
+            os.chmod(_TOKEN_PATH, 0o600)
+        except Exception:
+            pass
+        return tok
+    except Exception:
+        # If the FS is unavailable (TCC block), fall back to an in-memory
+        # token that at least changes every process restart.
+        return secrets.token_urlsafe(32)
+
+
+_SERVER_TOKEN = _read_or_create_token()
+
+
+def require_token(fn):
+    """Decorator — require X-Pet-Token header for write endpoints.
+
+    Reads the CURRENT on-disk token every check so `claude-pet` CLI can
+    read the same file and supply the header without a restart dance.
+    """
+    @wraps(fn)
+    def _wrapped(*args, **kwargs):
+        supplied = request.headers.get("X-Pet-Token", "")
+        try:
+            current = _TOKEN_PATH.read_text().strip() if _TOKEN_PATH.exists() else _SERVER_TOKEN
+        except Exception:
+            current = _SERVER_TOKEN
+        # constant-time compare — token isn't sensitive-key-grade but still
+        # avoids handing out a length-timing oracle for free.
+        if not supplied or not secrets.compare_digest(supplied, current):
+            return jsonify({"error": "unauthorized"}), 401
+        return fn(*args, **kwargs)
+    return _wrapped
+
+
+def server_token() -> str:
+    """Read the current token from disk (fallback to in-memory boot value).
+    Used by claude-pet CLI to send the X-Pet-Token header on write calls."""
+    try:
+        if _TOKEN_PATH.exists():
+            return _TOKEN_PATH.read_text().strip()
+    except Exception:
+        pass
+    return _SERVER_TOKEN
 
 
 @app.route("/version", methods=["GET"])
@@ -136,6 +205,7 @@ def window_status():
 
 
 @app.route("/break", methods=["POST"])
+@require_token
 def enqueue_break():
     """POST {category, slug} → the pet will open an overlay on its next tick.
     category is optional; if omitted, the pet picks the most-overdue one."""
@@ -164,6 +234,7 @@ def ack_break():
 
 
 @app.route("/shutdown", methods=["POST"])
+@require_token
 def shutdown():
     """Graceful self-termination — used by `claude-pet start` to replace a
     stale (older-version) pet without pkill. Local-only server, so exposure
@@ -175,6 +246,7 @@ def shutdown():
 
 
 @app.route("/state", methods=["POST"])
+@require_token
 def update_state():
     global state
     data = request.json or {}

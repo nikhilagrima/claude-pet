@@ -18,11 +18,12 @@ from PySide6.QtGui import (
     QAction, QBrush, QColor, QFont, QFontDatabase, QPainter, QPen, QPixmap,
 )
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QGraphicsDropShadowEffect, QGraphicsEllipseItem,
-    QGraphicsLineItem, QGraphicsScene, QGraphicsSimpleTextItem, QGraphicsView,
-    QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QTabWidget,
-    QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QDialog, QGraphicsDropShadowEffect,
+    QGraphicsEllipseItem, QGraphicsLineItem, QGraphicsScene,
+    QGraphicsSimpleTextItem, QGraphicsView, QHBoxLayout, QHeaderView,
+    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
+    QPushButton, QScrollArea, QSpinBox, QTableWidget, QTableWidgetItem,
+    QTabWidget, QVBoxLayout, QWidget,
 )
 
 from . import memory
@@ -1039,11 +1040,21 @@ class ErgonomicsTab(QWidget):
 
     def _trigger_break_now(self):
         import urllib.request as _u, json as _json
+        from pathlib import Path as _P
+        tok = ""
+        try:
+            _tp = _P.home() / ".claude" / "claude-pet" / "server.token"
+            if _tp.exists():
+                tok = _tp.read_text().strip()
+        except Exception:
+            pass
         try:
             _u.urlopen(_u.Request(
                 "http://localhost:5050/break",
                 data=_json.dumps({}).encode(),
-                headers={"Content-Type": "application/json"}, method="POST",
+                headers={"Content-Type": "application/json",
+                         "X-Pet-Token": tok},
+                method="POST",
             ), timeout=1)
         except Exception:
             pass
@@ -1352,6 +1363,215 @@ def _fmt_ago(iso: str | None) -> str:
     return f"{int(delta / 86400)}d"
 
 
+class SettingsTab(QWidget):
+    """Everything that used to require hand-editing ~/.claude/claude-pet/config.json.
+
+    Layout: single scrollable column of collapsible-ish sections.
+    - Ergonomics: master toggle, quiet hours, per-category interval + enabled
+    - GitHub: enabled, poll interval, token (masked), per-event-type filter
+    - Debug: link to error log path + last mtime + size
+
+    Every change writes immediately (no Save button) — matches macOS
+    System Settings pattern users already know.
+    """
+
+    def __init__(self):
+        super().__init__()
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        container = QWidget()
+        container.setStyleSheet(f"background: {NEON['bg_panel']};")
+        self.layout = QVBoxLayout(container)
+        self.layout.setContentsMargins(14, 14, 14, 14)
+        self.layout.setSpacing(16)
+
+        self._build_ergonomics_section()
+        self._build_github_section()
+        self._build_debug_section()
+        self.layout.addStretch(1)
+
+        scroll.setWidget(container)
+        outer.addWidget(scroll)
+        self.refresh()
+
+    # ---- section builders --------------------------------------------------
+    def _header(self, text: str, color=None) -> QLabel:
+        color = color or NEON["cyan"]
+        h = QLabel(
+            f"<span style='color:{color}; font-family:Menlo; font-size:11px; "
+            f"letter-spacing:1.5px; font-weight:700'>▸ {text}</span>"
+        )
+        return h
+
+    def _build_ergonomics_section(self):
+        self.layout.addWidget(self._header("ERGONOMICS COACH"))
+        self.ergo_enabled = QCheckBox("Ergonomics coach enabled")
+        self.ergo_enabled.stateChanged.connect(self._save_ergonomics)
+        self.layout.addWidget(self.ergo_enabled)
+
+        self.ergo_quiet = QCheckBox("Quiet hours enabled")
+        self.ergo_quiet.stateChanged.connect(self._save_ergonomics)
+        self.layout.addWidget(self.ergo_quiet)
+
+        self.ergo_categories = {}
+        self.ergo_minutes = {}
+        for cat in ("eyes", "neck", "wrists", "posture", "hydration"):
+            row = QHBoxLayout()
+            cb = QCheckBox(cat.title())
+            cb.stateChanged.connect(self._save_ergonomics)
+            row.addWidget(cb, 1)
+            sb = QSpinBox()
+            sb.setRange(1, 240)
+            sb.setSuffix(" min")
+            sb.setFixedWidth(90)
+            sb.valueChanged.connect(self._save_ergonomics)
+            row.addWidget(sb)
+            self.layout.addLayout(row)
+            self.ergo_categories[cat] = cb
+            self.ergo_minutes[cat] = sb
+
+    def _build_github_section(self):
+        self.layout.addWidget(self._header("GITHUB WATCHER"))
+        self.gh_enabled = QCheckBox("GitHub watcher enabled")
+        self.gh_enabled.stateChanged.connect(self._save_github)
+        self.layout.addWidget(self.gh_enabled)
+
+        interval_row = QHBoxLayout()
+        interval_row.addWidget(QLabel("Poll interval:"))
+        self.gh_interval = QSpinBox()
+        self.gh_interval.setRange(60, 3600)
+        self.gh_interval.setSuffix(" s")
+        self.gh_interval.setFixedWidth(120)
+        self.gh_interval.valueChanged.connect(self._save_github)
+        interval_row.addWidget(self.gh_interval)
+        interval_row.addStretch(1)
+        self.layout.addLayout(interval_row)
+
+        tok_row = QHBoxLayout()
+        tok_row.addWidget(QLabel("GitHub token (optional):"))
+        self.gh_token_input = QLineEdit()
+        self.gh_token_input.setEchoMode(QLineEdit.Password)
+        self.gh_token_input.setPlaceholderText("ghp_… or github_pat_…")
+        self.gh_token_input.editingFinished.connect(self._save_github)
+        tok_row.addWidget(self.gh_token_input, 1)
+        self.layout.addLayout(tok_row)
+
+        self.layout.addWidget(QLabel(
+            f"<span style='color:{NEON['text_muted']}; font-size:11px'>"
+            f"Which events fire the pet:</span>"
+        ))
+        self.gh_alerts = {}
+        for et in ("PushEvent", "PullRequestEvent", "PullRequestReviewEvent",
+                   "ReleaseEvent", "IssuesEvent", "WorkflowRunEvent",
+                   "DeploymentStatusEvent"):
+            cb = QCheckBox(et)
+            cb.stateChanged.connect(self._save_github)
+            self.layout.addWidget(cb)
+            self.gh_alerts[et] = cb
+
+    def _build_debug_section(self):
+        self.layout.addWidget(self._header("DEBUG", color=NEON["text_muted"]))
+        self.debug_label = QLabel()
+        self.debug_label.setTextFormat(Qt.RichText)
+        self.debug_label.setWordWrap(True)
+        self.debug_label.setStyleSheet(
+            f"color:{NEON['text_dim']}; font-family:Menlo; font-size:11px;"
+        )
+        self.layout.addWidget(self.debug_label)
+
+    # ---- persistence -------------------------------------------------------
+    def _save_ergonomics(self, *_):
+        if not getattr(self, "_ready", False):
+            return       # ignore initial refresh() setValue events
+        from .ergonomics import config as ergo_cfg
+        cfg = ergo_cfg.load()
+        cfg["enabled"] = self.ergo_enabled.isChecked()
+        qh = cfg.get("quiet_hours", {})
+        qh["enabled"] = self.ergo_quiet.isChecked()
+        cfg["quiet_hours"] = qh
+        cats = cfg.get("categories_enabled", {})
+        mins = cfg.get("intervals_min", {})
+        for cat, cb in self.ergo_categories.items():
+            cats[cat] = cb.isChecked()
+            mins[cat] = self.ergo_minutes[cat].value()
+        cfg["categories_enabled"] = cats
+        cfg["intervals_min"] = mins
+        ergo_cfg.save(cfg)
+
+    def _save_github(self, *_):
+        if not getattr(self, "_ready", False):
+            return
+        from .github_watch import config as gh_cfg
+        cfg = gh_cfg.load()
+        cfg["enabled"] = self.gh_enabled.isChecked()
+        cfg["poll_interval_s"] = self.gh_interval.value()
+        # Only persist the token if the user actually typed one; blank
+        # means "don't change" (avoids wiping a real token on refocus).
+        typed = self.gh_token_input.text().strip()
+        if typed:
+            cfg["token"] = typed
+        alerts = cfg.get("alert_types", {})
+        for et, cb in self.gh_alerts.items():
+            alerts[et] = cb.isChecked()
+        cfg["alert_types"] = alerts
+        gh_cfg.save(cfg)
+
+    # ---- refresh from disk -------------------------------------------------
+    def refresh(self):
+        from .ergonomics import config as ergo_cfg
+        from .github_watch import config as gh_cfg
+        self._ready = False
+        try:
+            ec = ergo_cfg.load()
+            self.ergo_enabled.setChecked(bool(ec.get("enabled", True)))
+            self.ergo_quiet.setChecked(bool(ec.get("quiet_hours", {}).get("enabled")))
+            cats = ec.get("categories_enabled", {})
+            mins = ec.get("intervals_min", {})
+            for cat, cb in self.ergo_categories.items():
+                cb.setChecked(bool(cats.get(cat, True)))
+                self.ergo_minutes[cat].setValue(int(mins.get(cat, 20)))
+
+            gc = gh_cfg.load()
+            self.gh_enabled.setChecked(bool(gc.get("enabled", True)))
+            self.gh_interval.setValue(int(gc.get("poll_interval_s", 300)))
+            # Don't populate the token field — leave it blank so nothing
+            # accidentally leaks on screen. Placeholder tells the user.
+            has_tok = bool(gc.get("token"))
+            self.gh_token_input.setPlaceholderText(
+                "token set (leave blank to keep)" if has_tok
+                else "ghp_… or github_pat_… (optional)"
+            )
+            alerts = gc.get("alert_types", {})
+            for et, cb in self.gh_alerts.items():
+                cb.setChecked(bool(alerts.get(et, True)))
+
+            # Debug section — error-log status.
+            from . import errors as _errors
+            elog = _errors.log_path()
+            if elog.exists():
+                size = elog.stat().st_size
+                self.debug_label.setText(
+                    f"Error log: <code>{_escape_html(str(elog))}</code><br>"
+                    f"Size: {size} bytes · "
+                    f"Empty means no silent failures recorded."
+                )
+            else:
+                self.debug_label.setText(
+                    f"Error log: <code>{_escape_html(str(elog))}</code><br>"
+                    f"Not yet created — pet has run clean."
+                )
+        finally:
+            self._ready = True
+
+
+def _escape_html(text: str) -> str:
+    return (str(text).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
 class MemoryPanel(QDialog):
     """The floating panel that opens when you click the pet.
 
@@ -1386,8 +1606,9 @@ class MemoryPanel(QDialog):
         self.stats = StatsTab()
         self.ergo = ErgonomicsTab()
         self.github = GithubTab()
+        self.settings = SettingsTab()
         for tab in (self.projects, self.graph, self.skills, self.stats,
-                    self.ergo, self.github):
+                    self.ergo, self.github, self.settings):
             tab.setAutoFillBackground(True)
             tab.setStyleSheet(
                 f"background: {NEON['bg_panel']}; border-radius: 10px;"
@@ -1398,6 +1619,7 @@ class MemoryPanel(QDialog):
         tabs.addTab(self.stats, "STATS")
         tabs.addTab(self.ergo, "ERGO")
         tabs.addTab(self.github, "GITHUB")
+        tabs.addTab(self.settings, "SETTINGS")
         layout.addWidget(tabs, 1)
 
         actions = QHBoxLayout()
@@ -1430,3 +1652,4 @@ class MemoryPanel(QDialog):
         self.stats.refresh()
         self.ergo.refresh()
         self.github.refresh()
+        self.settings.refresh()
