@@ -377,6 +377,12 @@ class PetWindow(QWidget):
             target = self._MACOS_TARGET_LEVEL
             for w in NSApp().windows():
                 try:
+                    # Skip windows the caller already hid — otherwise the pin
+                    # resurrects dismissed BreakOverlays as empty grey squares
+                    # above the mascot (level=1500 + orderFrontRegardless
+                    # bypasses close()).
+                    if not w.isVisible():
+                        continue
                     if force or w.level() < target:
                         w.setLevel_(target)
                         w.setCollectionBehavior_(behavior)
@@ -486,6 +492,16 @@ class PetWindow(QWidget):
         cfg = ergo_cfg.load()
         cfg["enabled"] = not cfg.get("enabled", True)
         ergo_cfg.save(cfg)
+        # If we just disabled ergonomics AND a break overlay is on-screen,
+        # dismiss it immediately — otherwise it stays open forever with no
+        # way to close (scheduler won't tick, and user has already said no).
+        if not cfg["enabled"] and self._active_break is not None:
+            try:
+                if self._active_break.isVisible():
+                    self._active_break._finish(completed=False)
+            except Exception:
+                pass
+            self._active_break = None
         # Rebuild menu next time it opens so the label refreshes.
 
     def _trigger_break_now(self):
