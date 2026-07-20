@@ -15,9 +15,27 @@ from .ergonomics import tracker as ergo_tracker
 PET_URL = "http://localhost:5050/state"
 
 
-def notify(status, event=None):
+def _read_pet_token() -> str:
+    """Read the server's shared secret from ~/.claude/claude-pet/server.token.
+    The server writes this on first boot; hooks send it as X-Pet-Token."""
+    from pathlib import Path
+    p = Path.home() / ".claude" / "claude-pet" / "server.token"
     try:
-        requests.post(PET_URL, json={"status": status, "event": event}, timeout=0.5)
+        return p.read_text().strip() if p.exists() else ""
+    except Exception:
+        return ""
+
+
+def notify(status, event=None):
+    # Non-blocking-ish timeout — 200ms so a hung server never blocks Claude
+    # Code's tool execution. Was 500ms; hook.py:20 audit finding B2.
+    try:
+        requests.post(
+            PET_URL,
+            json={"status": status, "event": event},
+            headers={"X-Pet-Token": _read_pet_token()},
+            timeout=0.2,
+        )
     except Exception:
         pass
 
@@ -92,16 +110,18 @@ def _remember(event: str, tool: str | None, project_path: str | None) -> None:
 def _emit_session_context(project_path: str) -> None:
     """Print JSON that Claude Code's SessionStart hook understands as an
     `additionalContext` injection. Uses the ≤800-token context builder
-    (Phase 3) so it's ranked, deterministic, and budget-enforced."""
+    (Phase 3) so it's ranked, deterministic, and budget-enforced.
+
+    Emits whenever the built block is non-empty. The block always contains
+    safety rules (never trimmed) even for brand-new projects with no graph
+    yet — that's exactly the case where the safety scaffolding matters
+    most. The old sessions/notes guard was suppressing those on cold starts.
+    """
+    from .errors import log_exception
     try:
-        summary = memory.project_summary(project_path)
-        if not summary.get("known"):
-            return
-        totals = summary.get("totals", {})
-        # Only inject if there's actually meaningful history to share.
-        if totals.get("sessions", 0) < 1 and not summary.get("notes"):
-            return
         block = ctx.build_context(project_path)
+        if not block or not block.strip():
+            return
         payload = {
             "hookSpecificOutput": {
                 "hookEventName": "SessionStart",
@@ -110,7 +130,7 @@ def _emit_session_context(project_path: str) -> None:
         }
         print(json.dumps(payload))
     except Exception:
-        pass
+        log_exception("hook._emit_session_context")
 
 
 def main():

@@ -188,8 +188,9 @@ class PetWindow(QWidget):
             try:
                 from .github_watch import watcher as gh_watcher
                 gh_watcher.poll_all_due()
-            except Exception as exc:
-                print(f"[pet] github watcher error: {exc}")
+            except Exception:
+                from .errors import log_exception
+                log_exception("app._github_watch_loop")
             time.sleep(30)
 
     def _drain_github_alerts(self):
@@ -234,11 +235,13 @@ class PetWindow(QWidget):
                 ]
                 self._active_gh_toasts.append(toast)
                 toast.show()
-            except Exception as exc:
-                print(f"[pet] github toast render error: {exc}")
+            except Exception:
+                from .errors import log_exception
+                log_exception("app._drain_github_alerts.toast")
             gh_storage.mark_alerted(ev["id"])
-        except Exception as exc:
-            print(f"[pet] github alert delivery error: {exc}")
+        except Exception:
+            from .errors import log_exception
+            log_exception("app._drain_github_alerts")
 
     def showEvent(self, event):
         super().showEvent(event)

@@ -84,6 +84,7 @@ class PanelImportTests(unittest.TestCase):
         self.assertTrue(hasattr(panel, "StatsTab"))
         self.assertTrue(hasattr(panel, "ErgonomicsTab"))
         self.assertTrue(hasattr(panel, "GithubTab"))
+        self.assertTrue(hasattr(panel, "SettingsTab"))
         # Tier icon/color tables must cover all 4 tiers.
         for tier in ("hatchling", "apprentice", "senior", "master"):
             self.assertIn(tier, panel.TIER_COLOR)

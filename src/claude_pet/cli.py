@@ -56,13 +56,26 @@ def _running_version() -> str | None:
         return None
 
 
+def _pet_token() -> str:
+    """Read the pet server's shared secret token from disk. Empty if not
+    yet created (first boot) — server will reject write requests until."""
+    from pathlib import Path
+    p = Path.home() / ".claude" / "claude-pet" / "server.token"
+    try:
+        return p.read_text().strip() if p.exists() else ""
+    except Exception:
+        return ""
+
+
 def _ask_running_pet_to_quit() -> bool:
     """POST /shutdown to the running pet. True if it acknowledged."""
     import urllib.request
     try:
         req = urllib.request.Request(
             "http://localhost:5050/shutdown", data=b"{}",
-            headers={"Content-Type": "application/json"}, method="POST",
+            headers={"Content-Type": "application/json",
+                     "X-Pet-Token": _pet_token()},
+            method="POST",
         )
         with urllib.request.urlopen(req, timeout=2) as r:
             r.read()
@@ -293,7 +306,9 @@ def cmd_ergonomics(args):
                 urllib.request.Request(
                     "http://localhost:5050/break",
                     data=json.dumps(payload).encode(),
-                    headers={"Content-Type": "application/json"}, method="POST",
+                    headers={"Content-Type": "application/json",
+                             "X-Pet-Token": _pet_token()},
+                    method="POST",
                 ), timeout=1,
             )
             print("[claude-pet] break request queued — overlay opens momentarily.")
@@ -701,6 +716,18 @@ def cmd_doctor(args):
         cmd_install_hooks(args)
         print("[doctor] ✓ hooks re-wired.")
         ok = True
+
+    # Point users at the error log for anything silent-failing.
+    try:
+        from . import errors as _errors
+        elog = _errors.log_path()
+        if elog.exists() and elog.stat().st_size > 0:
+            print(f"[doctor] error log: {elog} ({elog.stat().st_size} bytes) — "
+                  f"tail with:  tail -n 40 {elog}")
+        else:
+            print(f"[doctor] error log: clean ({elog})")
+    except Exception:
+        pass
 
     if ok:
         print("[doctor] all clear.")

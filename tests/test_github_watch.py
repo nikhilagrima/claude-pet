@@ -373,11 +373,16 @@ class WatcherTests(unittest.TestCase):
                  _push_event("e1")],
             )
             stats = watcher.poll_one(w)
-        self.assertEqual(stats["new"], 2)              # e3 and e4 are new
+        self.assertEqual(stats["new"], 2)              # e3 and e4 recorded
         alerts = storage.pending_alerts()
-        self.assertEqual([a["event_id"] for a in alerts], ["e3", "e4"])
+        # v0.5.5 cooldown: only the first PushEvent of a burst alerts;
+        # the second is recorded with reaction='none' for the feed.
+        self.assertEqual([a["event_id"] for a in alerts], ["e3"])
         # Cursor advanced
         self.assertEqual(storage.list_watches()[0]["last_event_id"], "e4")
+        # And the burst-suppressed event IS in the recent-events feed
+        all_events = [e["event_id"] for e in storage.recent_events()]
+        self.assertIn("e4", all_events)
 
     def test_third_poll_with_no_new_events_is_idempotent(self):
         from claude_pet.github_watch import storage, watcher
