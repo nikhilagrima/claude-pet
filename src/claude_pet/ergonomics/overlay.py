@@ -62,7 +62,8 @@ class BreakOverlay(QDialog):
         if self.exercise is None:
             # Bail cleanly — never crash the pet over a missing catalog entry.
             self._done_callback = on_close
-            self.close()
+            self.hide()
+            self.deleteLater()
             return
 
         self._done_callback = on_close
@@ -162,4 +163,11 @@ class BreakOverlay(QDialog):
             self._done_callback(completed)
         except Exception:
             pass
-        self.close()
+        # hide() + deleteLater() ensures the underlying NSWindow is destroyed,
+        # not just closed. Without this, the QDialog goes invisible but its
+        # NSApp().windows() entry persists — and app.py's aggressive macOS
+        # pin (setLevel_(1500) + setHidesOnDeactivate_(NO) + orderFrontRegardless
+        # on every window) would resurrect it as an empty grey square above
+        # the pet on the next watchdog tick.
+        self.hide()
+        self.deleteLater()

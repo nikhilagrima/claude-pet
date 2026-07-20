@@ -210,9 +210,11 @@ class GithubActivityToast(QWidget):
             # Match PetWindow._MACOS_TARGET_LEVEL exactly. Toast sits at the
             # same level as the pet — both above every user-space window.
             for w in NSApp().windows():
-                # Only touch OUR windows (untitled or with our title). Others
-                # (e.g. the pet itself) are handled by PetWindow's own pin.
                 try:
+                    # Skip hidden windows — resurrecting them (e.g. dismissed
+                    # BreakOverlays) shows empty grey squares over the pet.
+                    if not w.isVisible():
+                        continue
                     w.setLevel_(1500)
                     w.setCollectionBehavior_(behavior)
                     w.setHidesOnDeactivate_(False)
