@@ -312,12 +312,33 @@ class ProjectsTab(QWidget):
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.SingleSelection)
+        # Row-level right-click context menu → makes per-row delete obvious
+        # instead of the users-must-select-first + click-button pattern
+        # that read as "nothing happened" for many users.
+        from PySide6.QtWidgets import QMenu, QAbstractItemView
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._show_row_menu)
+        # Double-click a row to trigger delete too (with confirm).
+        self.table.doubleClicked.connect(self._on_double_click)
         layout.addWidget(self.table, 1)
 
+        # Hint above the button — makes the workflow discoverable.
+        hint = QLabel(
+            f"<span style='color:{NEON['text_muted']}; font-size:11px'>"
+            f"Select a row, then click Delete — or right-click a row for "
+            f"quick actions."
+            f"</span>"
+        )
+        layout.addWidget(hint)
+
         button_row = QHBoxLayout()
-        self.delete_btn = QPushButton("⚠  DELETE FROM MEMORY")
+        self.delete_btn = QPushButton("⚠  DELETE SELECTED PROJECT FROM MEMORY")
         self.delete_btn.setObjectName("danger")
         self.delete_btn.setCursor(Qt.PointingHandCursor)
+        self.delete_btn.setToolTip(
+            "Click a row above first, then this button. "
+            "Right-click a row for a per-row Delete option."
+        )
         self.delete_btn.clicked.connect(self._delete_selected)
         button_row.addWidget(self.delete_btn)
         button_row.addStretch(1)
@@ -325,6 +346,31 @@ class ProjectsTab(QWidget):
 
         self._path_by_row: dict[int, str] = {}
         self.refresh()
+
+    def _show_row_menu(self, pos):
+        """Right-click a row → show a Delete option scoped to THAT row."""
+        from PySide6.QtWidgets import QMenu
+        item = self.table.itemAt(pos)
+        if item is None:
+            return
+        row = item.row()
+        if row not in self._path_by_row:
+            return
+        # Ensure the clicked row is also visually selected so the state is
+        # consistent if the user afterwards clicks the main Delete button.
+        self.table.selectRow(row)
+        path = self._path_by_row[row]
+        menu = QMenu(self)
+        act_del = menu.addAction(f"Delete “{path}” from memory")
+        chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
+        if chosen == act_del:
+            self._delete_project(path)
+
+    def _on_double_click(self, index):
+        row = index.row()
+        if row in self._path_by_row:
+            self.table.selectRow(row)
+            self._delete_project(self._path_by_row[row])
 
     def refresh(self):
         rows = memory.list_projects(limit=200)
@@ -340,12 +386,22 @@ class ProjectsTab(QWidget):
         self.delete_btn.setEnabled(len(rows) > 0)
 
     def _delete_selected(self):
+        """Big-button path — requires a row already selected."""
+        from .errors import log_warning
         row = self.table.currentRow()
+        log_warning("panel.ProjectsTab.delete_btn",
+                    f"click, currentRow={row}, rowCount={self.table.rowCount()}")
         if row < 0 or row not in self._path_by_row:
-            QMessageBox.information(self, "Delete project",
-                                    "Pick a project first (click a row).")
+            QMessageBox.information(
+                self, "Pick a row first",
+                "Click a project row in the table above, then click Delete "
+                "again. (Or right-click any row → Delete for a shortcut.)"
+            )
             return
-        path = self._path_by_row[row]
+        self._delete_project(self._path_by_row[row])
+
+    def _delete_project(self, path: str):
+        """Confirm + delete flow, shared by button / right-click / double-click."""
         confirm = QMessageBox.warning(
             self, "Delete project from memory",
             f"Remove every memory row for:\n\n{path}\n\n"
@@ -356,7 +412,17 @@ class ProjectsTab(QWidget):
         )
         if confirm != QMessageBox.Yes:
             return
-        counts = memory.delete_project(path)
+        try:
+            counts = memory.delete_project(path)
+        except Exception as exc:
+            from .errors import log_exception
+            log_exception("panel.ProjectsTab._delete_project")
+            QMessageBox.critical(
+                self, "Delete failed",
+                f"Could not delete {path}:\n\n{exc}\n\n"
+                "See ~/.claude/claude-pet/errors.log for details."
+            )
+            return
         summary = ", ".join(f"{k}={v}" for k, v in counts.items() if v)
         QMessageBox.information(
             self, "Deleted",
@@ -1293,7 +1359,31 @@ class GithubTab(QWidget):
 
     def _remove_watch(self, owner: str, repo: str):
         from .github_watch import storage
-        storage.remove_watch(owner, repo)
+        from .errors import log_warning, log_exception
+        log_warning("panel.GithubTab.remove_btn", f"click {owner}/{repo}")
+        confirm = QMessageBox.warning(
+            self, "Stop watching?",
+            f"Remove the watch for {owner}/{repo}?\n\n"
+            "Watch cursor + local event history for this repo are deleted. "
+            "You can re-add the repo any time.",
+            QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        try:
+            ok = storage.remove_watch(owner, repo)
+        except Exception as exc:
+            log_exception("panel.GithubTab._remove_watch")
+            QMessageBox.critical(
+                self, "Remove failed",
+                f"Could not stop watching {owner}/{repo}:\n\n{exc}"
+            )
+            return
+        if not ok:
+            QMessageBox.information(
+                self, "Not watched",
+                f"{owner}/{repo} wasn't in the watch list.",
+            )
         self.refresh()
 
     # ---- rendering --------------------------------------------------------
@@ -1309,11 +1399,11 @@ class GithubTab(QWidget):
             )
             status = w.get("last_error") or ("watching" if w["enabled"] else "paused")
             self.watches_table.setItem(i, 2, QTableWidgetItem(status))
-            btn = QPushButton("×")
+            btn = QPushButton("Remove")
             btn.setToolTip(f"Stop watching {slug}")
             btn.setCursor(Qt.PointingHandCursor)
             btn.setObjectName("danger")
-            btn.setMaximumWidth(28)
+            btn.setMinimumWidth(80)
             btn.clicked.connect(
                 lambda _=False, o=w["owner"], r=w["repo"]: self._remove_watch(o, r)
             )

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "claude-pet"
-version = "0.5.5"
+version = "0.5.6"
 description = "Transparent desktop pet that reacts to Claude Code events with animations and sounds. Made by Byteflow.bot."
 readme = "README.md"
 requires-python = ">=3.10"
