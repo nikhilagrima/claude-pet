@@ -1478,6 +1478,7 @@ class SettingsTab(QWidget):
         self.layout.setContentsMargins(14, 14, 14, 14)
         self.layout.setSpacing(16)
 
+        self._build_pet_section()
         self._build_ergonomics_section()
         self._build_github_section()
         self._build_debug_section()
@@ -1495,6 +1496,17 @@ class SettingsTab(QWidget):
             f"letter-spacing:1.5px; font-weight:700'>▸ {text}</span>"
         )
         return h
+
+    def _build_pet_section(self):
+        self.layout.addWidget(self._header("PET"))
+        self.mute_checkbox = QCheckBox(
+            "Mute all sounds (breaks, GitHub alerts, Claude Code events)"
+        )
+        self.mute_checkbox.setToolTip(
+            "Silence every sound the pet plays. Emotions + toasts still show."
+        )
+        self.mute_checkbox.stateChanged.connect(self._save_pet)
+        self.layout.addWidget(self.mute_checkbox)
 
     def _build_ergonomics_section(self):
         self.layout.addWidget(self._header("ERGONOMICS COACH"))
@@ -1573,6 +1585,12 @@ class SettingsTab(QWidget):
         self.layout.addWidget(self.debug_label)
 
     # ---- persistence -------------------------------------------------------
+    def _save_pet(self, *_):
+        if not getattr(self, "_ready", False):
+            return
+        from . import pet_config
+        pet_config.set_muted(self.mute_checkbox.isChecked())
+
     def _save_ergonomics(self, *_):
         if not getattr(self, "_ready", False):
             return       # ignore initial refresh() setValue events
@@ -1613,8 +1631,11 @@ class SettingsTab(QWidget):
     def refresh(self):
         from .ergonomics import config as ergo_cfg
         from .github_watch import config as gh_cfg
+        from . import pet_config
         self._ready = False
         try:
+            self.mute_checkbox.setChecked(bool(pet_config.is_muted()))
+
             ec = ergo_cfg.load()
             self.ergo_enabled.setChecked(bool(ec.get("enabled", True)))
             self.ergo_quiet.setChecked(bool(ec.get("quiet_hours", {}).get("enabled")))

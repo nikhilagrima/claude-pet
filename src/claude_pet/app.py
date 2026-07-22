@@ -102,6 +102,15 @@ class SoundPlayer:
         self._lock = threading.Lock()
 
     def play(self, key):
+        # Global mute — checked fresh every call so a UI toggle or `claude-pet
+        # mute` takes effect immediately, no restart. Cost: one file read
+        # per sound event (~microseconds).
+        try:
+            from . import pet_config
+            if pet_config.is_muted():
+                return
+        except Exception:
+            pass    # never let the mute check itself block sound
         path = self.sounds.get(key)
         if not path:
             return
@@ -462,16 +471,21 @@ class PetWindow(QWidget):
         )
 
     def _build_menu(self):
-        # Rebuilt fresh every popup so the Ergonomics toggle label reflects
-        # the current on/off state.
+        # Rebuilt fresh every popup so the Ergonomics + Sound toggle labels
+        # reflect the current on/off state.
         m = QMenu(self)
         from .ergonomics import config as ergo_cfg
+        from . import pet_config
         ergo_enabled = ergo_cfg.load().get("enabled", True)
+        muted = pet_config.is_muted()
         for label, target in [
             ("Hello", lambda: self.poke("curious")),
             ("Working", lambda: self.poke("working")),
             ("Celebrate", lambda: self.poke("proud")),
             ("Sleep", lambda: self._set_state("sleeping", post=True)),
+            (None, None),
+            (f"{'Unmute sound' if muted else 'Mute sound'}",
+             self._toggle_mute),
             (None, None),
             ("Take a break now", self._trigger_break_now),
             ("Snooze breaks 30 min", lambda: self._snooze_breaks(30 * 60)),
@@ -490,7 +504,25 @@ class PetWindow(QWidget):
             m.addAction(act)
         return m
 
-    def _toggle_ergonomics(self):
+    def _toggle_mute(self):
+        """Flip the pet-wide mute flag. Sound player checks the config on
+        every play() so this takes effect on the next event, no restart.
+
+        Feedback strategy:
+        - Muting: silent — the pet does a curious blink so the click is
+          visible but no sound plays (that's the whole point).
+        - Unmuting: play a success chime AFTER flipping the flag so the
+          user hears immediate confirmation that audio is back.
+        """
+        from . import pet_config
+        new_state = pet_config.toggle_muted()
+        if new_state:
+            # Just went silent — visual ack only.
+            self.poke("curious")
+        else:
+            # Just came back — audible ack.
+            self.poke("success")
+            self.sound.play("success")
         from .ergonomics import config as ergo_cfg
         cfg = ergo_cfg.load()
         cfg["enabled"] = not cfg.get("enabled", True)

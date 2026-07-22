@@ -564,6 +564,33 @@ def cmd_stats(args):
     return 0
 
 
+def cmd_mute(args):
+    """`claude-pet mute [on|off|toggle|status]` — control the pet-wide sound mute.
+
+    The running pet checks the config on every play() so this takes effect
+    immediately; no restart needed. Right-click menu and Settings tab both
+    read from the same file.
+    """
+    from . import pet_config
+    sub = getattr(args, "mute_sub", "on")
+    if sub == "status":
+        state = pet_config.is_muted()
+        print(f"[claude-pet] sound: {'MUTED' if state else 'ON'}")
+        return 0
+    if sub == "toggle":
+        new = pet_config.toggle_muted()
+        print(f"[claude-pet] sound: {'MUTED' if new else 'ON'}")
+        return 0
+    if sub == "off":
+        pet_config.set_muted(False)
+        print("[claude-pet] sound: ON")
+        return 0
+    # default: "on" means muting ON (i.e. silence)
+    pet_config.set_muted(True)
+    print("[claude-pet] sound: MUTED  (unmute with:  claude-pet mute off)")
+    return 0
+
+
 def cmd_forget(args):
     """Delete every memory row for a project (CLI counterpart of the UI's
     'Delete selected project from memory' button)."""
@@ -876,6 +903,11 @@ def main():
     sub.add_parser("doctor", help="diagnose install + auto-fix broken hook paths")
     sub.add_parser("stats", help="show token-savings derivation (matches HUD gauge)")
 
+    mute_p = sub.add_parser("mute", help="mute all pet sounds (breaks, alerts, events)")
+    mute_p.add_argument("mute_sub", nargs="?", default="on",
+                        choices=["on", "off", "toggle", "status"],
+                        help="on (default) | off | toggle | status")
+
     update_p = sub.add_parser("update", help="pull latest release from GitHub, reinstall, restart")
     update_p.add_argument("--force", action="store_true",
                           help="reinstall even if already on latest version")
@@ -966,6 +998,8 @@ def main():
         return cmd_github(args)
     if args.cmd == "stats":
         return cmd_stats(args)
+    if args.cmd == "mute":
+        return cmd_mute(args)
     return 0
 
 
