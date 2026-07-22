@@ -394,29 +394,54 @@ def delete_project(project_path: str) -> dict:
 
     Cascades across every table that references project_path. Idempotent — a
     second call on the same path returns zeros.
+
+    Path-normalization robustness: the projects table historically accepted
+    both raw ("/tmp/foo") and realpath'd ("/private/tmp/foo") variants
+    depending on when the row was written, which meant a naive
+    WHERE path=<normalized> could miss the row that's clearly visible in
+    list_projects(). We now DELETE on the union of {raw, normalized, given}
+    so a UI or CLI click always cleans everything named by that path.
     """
-    project_path = normalize_project_path(project_path)
+    normalized = normalize_project_path(project_path)
+    # Build the set of path variants we'll try — original input, normalized,
+    # and any legacy /tmp ↔ /private/tmp aliasing pair.
+    candidates: set[str] = {project_path, normalized}
+    if normalized.startswith("/private/tmp/"):
+        candidates.add(normalized.replace("/private/tmp/", "/tmp/", 1))
+    if project_path.startswith("/tmp/"):
+        candidates.add("/private" + project_path)
+    candidates.discard("")
+
+    def _in_clause(n: int) -> str:
+        return "(" + ", ".join("?" * n) + ")"
+
     counts = {}
     with connect() as conn:
+        params = tuple(candidates)
+        placeholders = _in_clause(len(params))
         # Order matters: delete edges/nodes first (nodes has ON DELETE CASCADE
         # for edges, but explicit is safer). Then dependents, then `projects`
         # which uses `path` as its PK column instead of `project_path`.
         for table in ("edges", "nodes", "tool_usage", "notes", "sessions"):
             cur = conn.execute(
-                f"DELETE FROM {table} WHERE project_path = ?", (project_path,)
+                f"DELETE FROM {table} WHERE project_path IN {placeholders}",
+                params,
             )
             counts[table] = cur.rowcount
-        cur = conn.execute("DELETE FROM projects WHERE path = ?", (project_path,))
+        cur = conn.execute(
+            f"DELETE FROM projects WHERE path IN {placeholders}", params,
+        )
         counts["projects"] = cur.rowcount
-        # Also drop any skills whose ONLY source project was this one.
+        # Also drop any skills whose ONLY source project was one of these.
         skills = conn.execute(
             "SELECT slug, project_paths FROM skills"
         ).fetchall()
         killed_skills = 0
         for s in skills:
             paths = set(json.loads(s["project_paths"]))
-            if project_path in paths:
-                paths.discard(project_path)
+            hits = paths & candidates
+            if hits:
+                paths -= hits
                 if not paths:
                     conn.execute("DELETE FROM skills WHERE slug = ?", (s["slug"],))
                     killed_skills += 1
