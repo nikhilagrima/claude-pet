@@ -29,31 +29,48 @@ from PySide6.QtWidgets import (
 from . import memory
 
 
-# ---------- futuristic HUD design tokens ----------
-# Deep-navy HUD/FUI palette from the reference — hairline cyan on dark blue,
-# tiny monospace data readouts, corner-bracket panel decorators.
+# ---------- Linear-inspired design tokens ----------
+# Retheme to Linear (linear.app): near-black backgrounds, barely-visible
+# hairline borders, single purple accent, Inter typography, tight
+# compact spacing. Palette values sampled from Linear's design system.
+# Dict is still named NEON so downstream references (TIER_COLOR, per-tab
+# inline styles) update without a rename sweep — the semantic tokens
+# below (bg_deep / border / cyan / etc.) now carry Linear values instead
+# of the old HUD/FUI cyan-on-navy ones.
 NEON = {
-    "bg_deep":    "#061027",
-    "bg_panel":   "#0A1A38",
-    "bg_card":    "#0F2140",
-    "bg_hover":   "#152A55",
-    "border":     "#1B3A70",     # hairline grid tone
-    "border_hi":  "#4FC3F7",     # bright cyan on interactive
-    "cyan":       "#4FC3F7",
-    "cyan_hi":    "#7DE3FF",     # for glow highlights
-    "blue":       "#3FA3FF",
-    "magenta":    "#F0ABFC",     # rare accent
-    "green":      "#4ADE80",
-    "orange":     "#F97316",
-    "red":        "#F87171",
-    "text":       "#DDEBFF",
-    "text_dim":   "#8CA9D6",
-    "text_muted": "#5A7099",
+    # Backgrounds — near-black with a subtle blue-purple undertone
+    "bg_deep":    "#0A0A0F",     # canvas / dialog root
+    "bg_panel":   "#141419",     # tab pane, table body
+    "bg_card":    "#1C1C22",     # card, alt row
+    "bg_hover":   "#26262E",     # hover / selection
+    # Borders — hairline, ~15% white on black; near-invisible until hover
+    "border":     "#26262E",
+    "border_hi":  "#3A3A44",     # on interactive hover
+    # Accent — Linear's signature purple, used sparingly for focus + primary
+    "cyan":       "#5E6AD2",     # (name kept for compat; value is now purple)
+    "cyan_hi":    "#7A7EEA",     # brighter on hover
+    "blue":       "#7A7EEA",     # deprecated slot; alias to cyan_hi
+    "magenta":    "#B78AEC",     # soft lavender accent, rare use
+    # Semantics — muted, not neon
+    "green":      "#4CB782",
+    "orange":     "#F2994A",
+    "red":        "#EB5757",
+    # Text — pure white → grey → muted
+    "text":       "#FFFFFF",
+    "text_dim":   "#B4BABF",
+    "text_muted": "#6E7079",
 }
 
-# Use a mono/tech font — falls back gracefully across OSes.
+# Linear uses Inter (their custom fork of it, but standard Inter is close).
+# Keep the JetBrains Mono option too — some views (Stats readouts, GitHub
+# activity feed) still benefit from tabular figures. Downstream code that
+# wants a mono font can call _mono_font() explicitly.
 def _neon_font() -> str:
-    return "JetBrains Mono, SF Mono, Menlo, Consolas, monospace"
+    return "Inter, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif"
+
+
+def _mono_font() -> str:
+    return "'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace"
 
 
 TIER_COLOR = {
@@ -84,7 +101,8 @@ def _apply_neon_glow(widget: QWidget, color: str = None, radius: int = 22,
 
 
 class _CornerBrackets(QWidget):
-    """Four subtle L-brackets — signature futuristic accent, nothing else."""
+    """No-op in the Linear theme — Linear's aesthetic is unornamented.
+    Kept as a class for API compatibility with MemoryPanel; paints nothing."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -92,56 +110,40 @@ class _CornerBrackets(QWidget):
         self.setAttribute(Qt.WA_NoSystemBackground)
 
     def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        w, h = self.width(), self.height()
-        pen = QPen(QColor(NEON["cyan"])); pen.setWidthF(1.5); pen.setCapStyle(Qt.RoundCap)
-        p.setPen(pen)
-        L = 14; m = 4
-        for (x1, y1, x2, y2, x3, y3) in (
-            (m, m + L, m, m, m + L, m),                                     # top-left
-            (w - m - L, m, w - m, m, w - m, m + L),                         # top-right
-            (m, h - m - L, m, h - m, m + L, h - m),                         # bottom-left
-            (w - m - L, h - m, w - m, h - m, w - m, h - m - L),             # bottom-right
-        ):
-            p.drawLine(x1, y1, x2, y2); p.drawLine(x2, y2, x3, y3)
+        # deliberately empty — Linear doesn't do HUD chrome
+        return
 
 
 class _StatusStrip(QWidget):
-    """Minimal top strip: pulsing dot + wordmark. No ticker, no fake HUD text."""
+    """Linear-style top strip: static solid dot + wordmark + version.
+    No pulse, no ticker — Linear's aesthetic is calm, not animated."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedHeight(28)
-        self._pulse = 0
-        t = QTimer(self); t.timeout.connect(self._blink); t.start(1200)
-
-    def _blink(self):
-        self._pulse = (self._pulse + 1) % 2
-        self.update()
 
     def paintEvent(self, event):
         from . import __version__
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        # Pulsing dot
-        dot_col = QColor(NEON["cyan"])
-        dot_col.setAlpha(255 if self._pulse else 130)
-        p.setBrush(dot_col); p.setPen(Qt.NoPen)
+        # Static solid dot in the accent purple
+        p.setBrush(QColor(NEON["cyan"])); p.setPen(Qt.NoPen)
         p.drawEllipse(6, 10, 8, 8)
-        # Wordmark
+        # Wordmark — Inter, sentence case (Linear's typography)
         p.setPen(QColor(NEON["text"]))
-        f = p.font(); f.setPointSize(11); f.setBold(True); f.setFamily("Menlo"); p.setFont(f)
-        p.drawText(22, 20, "CLAUDE PET")
+        f = p.font(); f.setPointSize(12); f.setBold(True)
+        f.setFamily("Inter"); p.setFont(f)
+        p.drawText(22, 20, "Claude Pet")
         p.setPen(QColor(NEON["text_muted"]))
-        f2 = p.font(); f2.setBold(False); f2.setPointSize(9); p.setFont(f2)
-        p.drawText(122, 20, f"v{__version__}")
+        f2 = p.font(); f2.setBold(False); f2.setPointSize(11); p.setFont(f2)
+        p.drawText(112, 20, f"v{__version__}")
 
 
 def _dashboard_stylesheet() -> str:
-    # Do NOT set QWidget { background: transparent } — that made every tab
-    # translucent and prior-tab content bled through. Set backgrounds
-    # explicitly per widget class instead.
+    # Linear-inspired: near-black canvas, hairline borders that appear only
+    # on hover, tight radii (6-8px), single purple accent used sparingly on
+    # focus + primary actions. Never set QWidget { background: transparent }
+    # — that made every tab translucent and prior-tab content bled through.
     return f"""
     QDialog {{
         background: {NEON['bg_deep']};
@@ -155,187 +157,189 @@ def _dashboard_stylesheet() -> str:
         font-family: {_neon_font()};
     }}
 
-    /* Tabs — neon underline on active */
+    /* Tabs — Linear pattern: no chrome per tab; active state is a subtle
+       background lift + a 1px accent underline (fake via border-bottom). */
     QTabWidget::pane {{
         border: 1px solid {NEON['border']};
-        border-radius: 14px;
+        border-radius: 8px;
         background: {NEON['bg_panel']};
         top: -1px;
     }}
     QTabBar::tab {{
-        background: {NEON['bg_panel']};
-        color: {NEON['text_dim']};
-        padding: 10px 22px;
-        margin-right: 4px;
-        border: 1px solid {NEON['border']};
-        border-radius: 8px;
-        font-weight: 600;
+        background: transparent;
+        color: {NEON['text_muted']};
+        padding: 8px 14px;
+        margin-right: 2px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        font-weight: 500;
         font-family: {_neon_font()};
-        letter-spacing: 1px;
+        letter-spacing: 0;
         font-size: 12px;
     }}
     QTabBar::tab:hover {{
-        color: {NEON['cyan']};
-        border-color: {NEON['border_hi']};
+        color: {NEON['text']};
+        background: {NEON['bg_card']};
     }}
     QTabBar::tab:selected {{
-        color: {NEON['cyan']};
-        background: {NEON['bg_card']};
-        border-color: {NEON['cyan']};
+        color: {NEON['text']};
+        background: {NEON['bg_hover']};
+        border: 1px solid {NEON['border']};
     }}
 
-    /* Buttons — deep card with neon border on hover */
+    /* Buttons — Linear's signature look: subtle card bg, no bold border,
+       purple accent only on primary + focus. No hover glow. */
     QPushButton {{
         background: {NEON['bg_card']};
         color: {NEON['text']};
         border: 1px solid {NEON['border']};
-        padding: 10px 20px;
-        border-radius: 12px;
-        font-weight: 600;
+        padding: 6px 14px;
+        border-radius: 6px;
+        font-weight: 500;
         font-family: {_neon_font()};
-        letter-spacing: 1px;
-        min-height: 24px;
+        letter-spacing: 0;
+        font-size: 13px;
+        min-height: 22px;
     }}
     QPushButton:hover {{
-        border: 1px solid {NEON['cyan']};
-        color: {NEON['cyan']};
         background: {NEON['bg_hover']};
+        border: 1px solid {NEON['border_hi']};
+        color: {NEON['text']};
     }}
     QPushButton:pressed {{
-        background: {NEON['border_hi']};
-        color: {NEON['bg_deep']};
+        background: {NEON['bg_panel']};
     }}
     QPushButton:disabled {{
         color: {NEON['text_muted']};
         border-color: {NEON['border']};
+        background: {NEON['bg_panel']};
     }}
-    QPushButton#danger:hover {{
-        border-color: {NEON['red']};
+    QPushButton#danger {{
         color: {NEON['red']};
     }}
+    QPushButton#danger:hover {{
+        background: rgba(235, 87, 87, 0.10);
+        border-color: {NEON['red']};
+    }}
     QPushButton#primary {{
-        background: {NEON['bg_hover']};
+        background: {NEON['cyan']};
         border: 1px solid {NEON['cyan']};
-        color: {NEON['cyan']};
+        color: #FFFFFF;
+        font-weight: 600;
     }}
     QPushButton#primary:hover {{
-        background: {NEON['border_hi']};
-        color: {NEON['bg_deep']};
+        background: {NEON['cyan_hi']};
+        border-color: {NEON['cyan_hi']};
     }}
 
-    /* Tables — HUD data grid */
+    /* Tables — Linear list style: no gridlines, subtle row separators,
+       hover row background instead of neon selection. */
     QTableWidget {{
         background: {NEON['bg_panel']};
         border: 1px solid {NEON['border']};
-        border-radius: 12px;
-        gridline-color: {NEON['border']};
+        border-radius: 8px;
+        gridline-color: transparent;
         color: {NEON['text']};
-        alternate-background-color: {NEON['bg_card']};
+        alternate-background-color: {NEON['bg_panel']};
         font-family: {_neon_font()};
         selection-background-color: {NEON['bg_hover']};
-        selection-color: {NEON['cyan']};
+        selection-color: {NEON['text']};
     }}
     QHeaderView::section {{
-        background: {NEON['bg_deep']};
-        color: {NEON['cyan']};
+        background: {NEON['bg_panel']};
+        color: {NEON['text_muted']};
         border: none;
-        border-bottom: 1px solid {NEON['border_hi']};
+        border-bottom: 1px solid {NEON['border']};
         padding: 8px 10px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 1.2px;
-        font-size: 10px;
+        font-weight: 500;
+        text-transform: none;
+        letter-spacing: 0;
+        font-size: 11px;
     }}
     QTableWidget::item {{
-        padding: 8px 6px;
+        padding: 8px 10px;
+        border-bottom: 1px solid {NEON['border']};
     }}
     QTableWidget::item:selected {{
         background: {NEON['bg_hover']};
-        color: {NEON['cyan']};
+        color: {NEON['text']};
     }}
 
-    /* Lists — same HUD feel */
+    /* Lists — Linear inbox-style rows */
     QListWidget {{
         background: {NEON['bg_panel']};
         border: 1px solid {NEON['border']};
-        border-radius: 12px;
+        border-radius: 8px;
         color: {NEON['text']};
-        padding: 6px;
+        padding: 4px;
         font-family: {_neon_font()};
     }}
     QListWidget::item {{
-        background: {NEON['bg_card']};
-        border: 1px solid {NEON['border']};
-        border-radius: 10px;
-        padding: 12px 14px;
+        background: transparent;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 12px;
         margin: 4px 2px;
     }}
     QListWidget::item:hover {{
-        border-color: {NEON['border_hi']};
-        background: {NEON['bg_hover']};
+        background: {NEON['bg_card']};
     }}
     QListWidget::item:selected {{
-        border-color: {NEON['cyan']};
-        color: {NEON['cyan']};
         background: {NEON['bg_hover']};
+        color: {NEON['text']};
     }}
 
-    /* Text inputs — cyan focus glow so users know they're editable.
-       Without explicit rules these fell back to Qt defaults which render
-       white-on-white on the dark theme (invisible). */
+    /* Text inputs — Linear's field style: minimal border at rest, purple
+       accent only on focus. Subtle background lift on focus signals edit. */
     QLineEdit {{
-        background: {NEON['bg_deep']};
+        background: {NEON['bg_card']};
         color: {NEON['text']};
-        border: 1.5px solid {NEON['border']};
-        border-radius: 8px;
-        padding: 8px 12px;
+        border: 1px solid {NEON['border']};
+        border-radius: 6px;
+        padding: 7px 10px;
         font-family: {_neon_font()};
         font-size: 13px;
         selection-background-color: {NEON['cyan']};
-        selection-color: {NEON['bg_deep']};
+        selection-color: #FFFFFF;
         min-height: 20px;
         placeholder-text-color: {NEON['text_muted']};
     }}
     QLineEdit:hover {{
-        border: 1.5px solid {NEON['border_hi']};
+        border: 1px solid {NEON['border_hi']};
     }}
     QLineEdit:focus {{
-        border: 1.5px solid {NEON['cyan']};
-        background: {NEON['bg_panel']};
+        border: 1px solid {NEON['cyan']};
+        background: {NEON['bg_hover']};
     }}
     QLineEdit:disabled {{
         color: {NEON['text_muted']};
         border-color: {NEON['border']};
         background: {NEON['bg_panel']};
     }}
-    QLineEdit[echoMode="2"] {{
-        /* password fields — subtle green tint so users see they're masked */
-        letter-spacing: 2px;
-    }}
 
-    /* Numeric spinboxes — for interval fields in Settings */
+    /* Numeric spinboxes — matching field style */
     QSpinBox, QDoubleSpinBox {{
-        background: {NEON['bg_deep']};
+        background: {NEON['bg_card']};
         color: {NEON['text']};
-        border: 1.5px solid {NEON['border']};
-        border-radius: 8px;
-        padding: 6px 10px;
+        border: 1px solid {NEON['border']};
+        border-radius: 6px;
+        padding: 6px 8px;
         font-family: {_neon_font()};
         font-size: 13px;
         min-height: 20px;
     }}
     QSpinBox:hover, QDoubleSpinBox:hover {{
-        border: 1.5px solid {NEON['border_hi']};
+        border: 1px solid {NEON['border_hi']};
     }}
     QSpinBox:focus, QDoubleSpinBox:focus {{
-        border: 1.5px solid {NEON['cyan']};
-        background: {NEON['bg_panel']};
+        border: 1px solid {NEON['cyan']};
+        background: {NEON['bg_hover']};
     }}
     QSpinBox::up-button, QSpinBox::down-button,
     QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
-        background: {NEON['bg_card']};
+        background: transparent;
         border: none;
-        width: 18px;
+        width: 16px;
     }}
     QSpinBox::up-button:hover, QSpinBox::down-button:hover,
     QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {{
@@ -346,35 +350,35 @@ def _dashboard_stylesheet() -> str:
         width: 8px; height: 8px;
     }}
 
-    /* Checkboxes — visible tick marks. Qt default is invisible on dark bg. */
+    /* Checkboxes — Linear's small square indicator, filled purple when on */
     QCheckBox {{
         color: {NEON['text']};
         font-family: {_neon_font()};
         font-size: 13px;
-        spacing: 10px;
-        padding: 4px 0;
+        spacing: 8px;
+        padding: 3px 0;
     }}
     QCheckBox:disabled {{
         color: {NEON['text_muted']};
     }}
     QCheckBox::indicator {{
-        width: 18px;
-        height: 18px;
-        border: 1.5px solid {NEON['border_hi']};
+        width: 16px;
+        height: 16px;
+        border: 1px solid {NEON['border_hi']};
         border-radius: 4px;
-        background: {NEON['bg_deep']};
+        background: {NEON['bg_card']};
     }}
     QCheckBox::indicator:hover {{
-        border: 1.5px solid {NEON['cyan']};
+        border: 1px solid {NEON['cyan']};
     }}
     QCheckBox::indicator:checked {{
         background: {NEON['cyan']};
-        border: 1.5px solid {NEON['cyan']};
+        border: 1px solid {NEON['cyan']};
         image: none;
     }}
     QCheckBox::indicator:checked:hover {{
         background: {NEON['cyan_hi']};
-        border: 1.5px solid {NEON['cyan_hi']};
+        border: 1px solid {NEON['cyan_hi']};
     }}
     QCheckBox::indicator:disabled {{
         border-color: {NEON['border']};
