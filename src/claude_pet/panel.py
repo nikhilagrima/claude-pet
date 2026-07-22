@@ -280,6 +280,107 @@ def _dashboard_stylesheet() -> str:
         background: {NEON['bg_hover']};
     }}
 
+    /* Text inputs — cyan focus glow so users know they're editable.
+       Without explicit rules these fell back to Qt defaults which render
+       white-on-white on the dark theme (invisible). */
+    QLineEdit {{
+        background: {NEON['bg_deep']};
+        color: {NEON['text']};
+        border: 1.5px solid {NEON['border']};
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-family: {_neon_font()};
+        font-size: 13px;
+        selection-background-color: {NEON['cyan']};
+        selection-color: {NEON['bg_deep']};
+        min-height: 20px;
+        placeholder-text-color: {NEON['text_muted']};
+    }}
+    QLineEdit:hover {{
+        border: 1.5px solid {NEON['border_hi']};
+    }}
+    QLineEdit:focus {{
+        border: 1.5px solid {NEON['cyan']};
+        background: {NEON['bg_panel']};
+    }}
+    QLineEdit:disabled {{
+        color: {NEON['text_muted']};
+        border-color: {NEON['border']};
+        background: {NEON['bg_panel']};
+    }}
+    QLineEdit[echoMode="2"] {{
+        /* password fields — subtle green tint so users see they're masked */
+        letter-spacing: 2px;
+    }}
+
+    /* Numeric spinboxes — for interval fields in Settings */
+    QSpinBox, QDoubleSpinBox {{
+        background: {NEON['bg_deep']};
+        color: {NEON['text']};
+        border: 1.5px solid {NEON['border']};
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-family: {_neon_font()};
+        font-size: 13px;
+        min-height: 20px;
+    }}
+    QSpinBox:hover, QDoubleSpinBox:hover {{
+        border: 1.5px solid {NEON['border_hi']};
+    }}
+    QSpinBox:focus, QDoubleSpinBox:focus {{
+        border: 1.5px solid {NEON['cyan']};
+        background: {NEON['bg_panel']};
+    }}
+    QSpinBox::up-button, QSpinBox::down-button,
+    QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
+        background: {NEON['bg_card']};
+        border: none;
+        width: 18px;
+    }}
+    QSpinBox::up-button:hover, QSpinBox::down-button:hover,
+    QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {{
+        background: {NEON['bg_hover']};
+    }}
+    QSpinBox::up-arrow, QDoubleSpinBox::up-arrow,
+    QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+        width: 8px; height: 8px;
+    }}
+
+    /* Checkboxes — visible tick marks. Qt default is invisible on dark bg. */
+    QCheckBox {{
+        color: {NEON['text']};
+        font-family: {_neon_font()};
+        font-size: 13px;
+        spacing: 10px;
+        padding: 4px 0;
+    }}
+    QCheckBox:disabled {{
+        color: {NEON['text_muted']};
+    }}
+    QCheckBox::indicator {{
+        width: 18px;
+        height: 18px;
+        border: 1.5px solid {NEON['border_hi']};
+        border-radius: 4px;
+        background: {NEON['bg_deep']};
+    }}
+    QCheckBox::indicator:hover {{
+        border: 1.5px solid {NEON['cyan']};
+    }}
+    QCheckBox::indicator:checked {{
+        background: {NEON['cyan']};
+        border: 1.5px solid {NEON['cyan']};
+        image: none;
+    }}
+    QCheckBox::indicator:checked:hover {{
+        background: {NEON['cyan_hi']};
+        border: 1.5px solid {NEON['cyan_hi']};
+    }}
+    QCheckBox::indicator:disabled {{
+        border-color: {NEON['border']};
+        background: {NEON['bg_panel']};
+    }}
+
     /* Scrollbars */
     QScrollBar:vertical {{
         background: {NEON['bg_deep']};
@@ -1215,23 +1316,9 @@ class GithubTab(QWidget):
         self.add_input = QLineEdit()
         self.add_input.setPlaceholderText("owner/repo   e.g.  facebook/react")
         self.add_input.setClearButtonEnabled(True)
-        # Bigger click target + strong focus ring so people know they can type here.
+        # Height only; visual styling is inherited from the global stylesheet
+        # so every input on every tab looks the same (focus ring, focus glow).
         self.add_input.setMinimumHeight(34)
-        self.add_input.setStyleSheet(
-            f"QLineEdit {{ "
-            f"background: {NEON['bg_deep']}; "
-            f"color: {NEON['text']}; "
-            f"border: 1.5px solid {NEON['border']}; "
-            f"border-radius: 8px; padding: 6px 10px; "
-            f"font-family: Menlo, 'JetBrains Mono', monospace; font-size: 13px; "
-            f"selection-background-color: {NEON['cyan']}; "
-            f"selection-color: {NEON['bg_deep']}; "
-            f"}}"
-            f"QLineEdit:focus {{ "
-            f"border: 1.5px solid {NEON['cyan']}; "
-            f"background: {NEON['bg_panel']}; "
-            f"}}"
-        )
         self.add_input.returnPressed.connect(self._add_repo)
         add_row.addWidget(self.add_input, 1)
 
