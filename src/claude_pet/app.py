@@ -523,6 +523,10 @@ class PetWindow(QWidget):
             # Just came back — audible ack.
             self.poke("success")
             self.sound.play("success")
+
+    def _toggle_ergonomics(self):
+        """Flip the ergonomics coach enabled/disabled state. Menu label is
+        rebuilt on the next right-click so it reflects the new state."""
         from .ergonomics import config as ergo_cfg
         cfg = ergo_cfg.load()
         cfg["enabled"] = not cfg.get("enabled", True)
@@ -537,7 +541,6 @@ class PetWindow(QWidget):
             except Exception:
                 pass
             self._active_break = None
-        # Rebuild menu next time it opens so the label refreshes.
 
     def _trigger_break_now(self):
         """Manual break trigger — picks the most overdue category or eyes as default."""
