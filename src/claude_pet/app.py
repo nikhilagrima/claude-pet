@@ -90,9 +90,14 @@ def _play_audio(path):
 
 
 class SoundPlayer:
+    # Single beep per event. Was 3 for success, 2 for attention — combined
+    # with Claude Code's rapid-fire hook events during active work, the
+    # 3-beep bursts stacked back-to-back and read as "continuous beeping"
+    # to the user. Ergonomics: a single crisp chirp per event carries the
+    # same signal without the machine-gun feel.
     PATTERNS = {
-        "success":   {"count": 3, "interval": 0.22},
-        "attention": {"count": 2, "interval": 0.30},
+        "success":   {"count": 1, "interval": 0.00},
+        "attention": {"count": 1, "interval": 0.00},
         "error":     {"count": 1, "interval": 0.00},
     }
 
@@ -493,6 +498,8 @@ class PetWindow(QWidget):
              self._toggle_ergonomics),
             (None, None),
             ("Reset position", self._move_to_bottom_right),
+            ("Hide pet  (unhide with:  claude-pet show)",
+             lambda: self.hide()),
             (None, None),
             ("Quit", QApplication.instance().quit),
         ]:
@@ -617,6 +624,37 @@ class PetWindow(QWidget):
         # reaction when a new event is genuinely pending.
         if self.frame_idx % 30 == 0:
             self._drain_github_alerts()
+
+        # Visibility queue — same 3s cadence. `claude-pet hide/show` POSTs a
+        # desired state to /visibility; we drain here and call hide()/show()
+        # on the QWidget. That's how the CLI unhides the pet after it's been
+        # hidden (right-click menu is unreachable when the window is gone).
+        if self.frame_idx % 30 == 0:
+            self._drain_visibility_queue()
+
+    def _drain_visibility_queue(self):
+        """Check /visibility for a CLI-triggered show/hide and apply it."""
+        try:
+            import urllib.request as _u
+            with _u.urlopen("http://localhost:5050/visibility", timeout=0.3) as r:
+                pending = json.loads(r.read())
+            if not pending.get("queued"):
+                return
+            # Ack immediately so we don't reapply next tick.
+            _u.urlopen(_u.Request("http://localhost:5050/visibility/ack",
+                                  data=b'{}', method="POST",
+                                  headers={"Content-Type": "application/json"}),
+                       timeout=0.3).read()
+            want_visible = bool(pending.get("show"))
+            if want_visible and not self.isVisible():
+                self.show()
+                # Re-pin so it comes back at level 1500 + accessory + on
+                # all Spaces, not just wherever macOS decides to show it.
+                self._apply_macos_pin(force=True)
+            elif not want_visible and self.isVisible():
+                self.hide()
+        except Exception:
+            pass
 
     def _drain_break_queue(self):
         """Check /break for a CLI/menu-triggered request and open the overlay."""

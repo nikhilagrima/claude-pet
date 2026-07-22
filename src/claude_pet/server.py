@@ -20,6 +20,13 @@ state = {"status": "idle", "last_event": None}
 # reuses the existing Flask + polling pipeline the pet already runs.
 _pending_break = {"queued": False, "category": None, "slug": None}
 
+# Visibility queue — same pattern as _pending_break. POST /visibility with
+# {"show": true|false} enqueues the desired state; the pet's tick loop
+# drains it and calls hide()/show() on the Qt window if it differs.
+# This is how `claude-pet show` unhides the mascot after it's been
+# hidden (the right-click menu is unreachable when the window is hidden).
+_pending_visibility = {"queued": False, "show": None}
+
 
 # ------ shared-secret token for write endpoints ------------------------------
 # The pet's Flask server binds to 127.0.0.1 so remote hosts can't reach it,
@@ -230,6 +237,31 @@ def peek_break():
 def ack_break():
     global _pending_break
     _pending_break = {"queued": False, "category": None, "slug": None}
+    return jsonify({"ok": True})
+
+
+@app.route("/visibility", methods=["POST"])
+@require_token
+def enqueue_visibility():
+    """POST {"show": true|false} → the pet's next tick calls show()/hide()."""
+    global _pending_visibility
+    data = request.json or {}
+    if "show" not in data:
+        return jsonify({"error": "missing 'show' bool"}), 400
+    _pending_visibility = {"queued": True, "show": bool(data["show"])}
+    return jsonify({"ok": True, "queued": _pending_visibility})
+
+
+@app.route("/visibility", methods=["GET"])
+def peek_visibility():
+    """The pet's tick reads this; if queued it applies then POSTs /visibility/ack."""
+    return jsonify(_pending_visibility)
+
+
+@app.route("/visibility/ack", methods=["POST"])
+def ack_visibility():
+    global _pending_visibility
+    _pending_visibility = {"queued": False, "show": None}
     return jsonify({"ok": True})
 
 

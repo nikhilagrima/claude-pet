@@ -591,6 +591,50 @@ def cmd_mute(args):
     return 0
 
 
+def cmd_visibility(args):
+    """`claude-pet hide|show|toggle-visibility` — control mascot visibility.
+
+    Posts to /visibility on the running pet server. The pet's tick loop
+    drains the queue every ~3s and calls hide()/show() on the QWidget.
+    Server + background watchers keep running when hidden — GitHub polling,
+    ergonomics scheduler, break overlays all still fire. Only the mascot
+    disappears.
+    """
+    import urllib.request, json as _json
+    action = args.cmd     # "hide" | "show" | "toggle-visibility"
+    if action == "toggle-visibility":
+        # We don't have server-side toggle logic; do the read-then-write dance.
+        try:
+            with urllib.request.urlopen(
+                "http://localhost:5050/window-status", timeout=1
+            ) as r:
+                st = _json.loads(r.read())
+            currently_visible = any(w.get("visible") for w in st.get("windows", []))
+        except Exception:
+            currently_visible = True    # optimistic default
+        want_show = not currently_visible
+    else:
+        want_show = (action == "show")
+    payload = _json.dumps({"show": want_show}).encode()
+    try:
+        urllib.request.urlopen(
+            urllib.request.Request(
+                "http://localhost:5050/visibility",
+                data=payload, method="POST",
+                headers={"Content-Type": "application/json",
+                         "X-Pet-Token": _pet_token()},
+            ), timeout=2,
+        )
+        state = "shown" if want_show else "hidden"
+        print(f"[claude-pet] pet: {state}  "
+              f"({'right-click to hide again' if want_show else 'restore with:  claude-pet show'})")
+        return 0
+    except Exception as exc:
+        print(f"[claude-pet] could not reach pet server: {exc}",
+              file=sys.stderr)
+        return 1
+
+
 def cmd_forget(args):
     """Delete every memory row for a project (CLI counterpart of the UI's
     'Delete selected project from memory' button)."""
@@ -908,6 +952,11 @@ def main():
                         choices=["on", "off", "toggle", "status"],
                         help="on (default) | off | toggle | status")
 
+    sub.add_parser("hide", help="hide the pet mascot (server keeps running)")
+    sub.add_parser("show", help="show the pet mascot after `hide`")
+    sub.add_parser("toggle-visibility",
+                    help="toggle mascot visibility (show <-> hide)")
+
     update_p = sub.add_parser("update", help="pull latest release from GitHub, reinstall, restart")
     update_p.add_argument("--force", action="store_true",
                           help="reinstall even if already on latest version")
@@ -1000,6 +1049,8 @@ def main():
         return cmd_stats(args)
     if args.cmd == "mute":
         return cmd_mute(args)
+    if args.cmd in ("hide", "show", "toggle-visibility"):
+        return cmd_visibility(args)
     return 0
 
 
