@@ -44,6 +44,16 @@ CREATE TABLE IF NOT EXISTS meal_log (
   note       TEXT,
   logged_at  TEXT NOT NULL
 );
+
+-- Direct body-part completions from the clickable body map. Independent of
+-- workout_log (which is focus-based) so users can tick off e.g. just
+-- "biceps" today without claiming the entire PULL focus is done.
+CREATE TABLE IF NOT EXISTS body_part_log (
+  day        TEXT NOT NULL,
+  part       TEXT NOT NULL,             -- lowercase name matching ALL_BODY_PARTS
+  logged_at  TEXT NOT NULL,
+  PRIMARY KEY (day, part)
+);
 """
 
 
@@ -154,3 +164,36 @@ def latest_weight() -> Optional[float]:
             "SELECT weight_kg FROM weight_log ORDER BY day DESC LIMIT 1"
         ).fetchone()
     return float(r["weight_kg"]) if r else None
+
+
+# --- BODY-PART LOG (feeds the clickable body map) --------------------------
+
+def log_body_part(part: str, day: Optional[str] = None) -> None:
+    """Mark one specific body part as trained today (idempotent)."""
+    d = day or _today()
+    with connect() as c:
+        c.execute(
+            "INSERT OR REPLACE INTO body_part_log (day, part, logged_at) "
+            "VALUES (?, ?, ?)",
+            (d, part.lower(), _now_utc()),
+        )
+
+
+def unlog_body_part(part: str, day: Optional[str] = None) -> None:
+    """Un-mark a body part for the given day (revert an accidental click)."""
+    d = day or _today()
+    with connect() as c:
+        c.execute("DELETE FROM body_part_log WHERE day = ? AND part = ?",
+                  (d, part.lower()))
+
+
+def body_parts_between(start_day: str, end_day: str) -> set[str]:
+    """All distinct body parts logged in the inclusive [start_day, end_day]
+    range. Used by the coach to compute weekly coverage."""
+    with connect() as c:
+        rows = c.execute(
+            "SELECT DISTINCT part FROM body_part_log "
+            "WHERE day >= ? AND day <= ?",
+            (start_day, end_day),
+        ).fetchall()
+    return {r["part"] for r in rows}

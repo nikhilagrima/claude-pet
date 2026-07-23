@@ -221,6 +221,60 @@ class FitnessTabTests(unittest.TestCase):
                              f"{btn.text()!r} autoDefault is True")
 
 
+class BodyMapWidgetTests(unittest.TestCase):
+    """Clickable body-map widget — construction, state colors, click flow."""
+
+    @classmethod
+    def setUpClass(cls):
+        from PySide6.QtWidgets import QApplication
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        self.cfg, self.db, _ = _isolate()
+        p1 = mock.patch("claude_pet.fitness.tracker.db_path",
+                        return_value=self.db)
+        p2 = mock.patch("claude_pet.fitness.config._config_path",
+                        return_value=self.cfg)
+        p1.start(); p2.start()
+        self.addCleanup(p1.stop); self.addCleanup(p2.stop)
+
+    def test_all_expected_body_parts_are_clickable(self):
+        from claude_pet.fitness.body_map import BodyMapWidget
+        from claude_pet.fitness.plan import ALL_BODY_PARTS
+        w = BodyMapWidget()
+        for part in ALL_BODY_PARTS:
+            self.assertIn(part, w._items,
+                          f"body-map is missing clickable region for {part!r}")
+
+    def test_widget_reflects_direct_log_after_refresh(self):
+        from claude_pet.fitness.body_map import BodyMapWidget
+        from claude_pet.fitness import tracker
+        from datetime import date, timedelta
+        # Seed last week: cover chest so it wouldn't be carry-forward red
+        last_monday = date.today() - timedelta(days=date.today().weekday() + 7)
+        tracker.log_body_part("chest", day=last_monday.isoformat())
+        w = BodyMapWidget()
+        # Before: chest is grey (nothing logged this week; last week covered)
+        self.assertEqual(w._items["chest"]._state, "grey")
+        tracker.log_body_part("chest")
+        w.refresh()
+        self.assertEqual(w._items["chest"]._state, "green")
+
+    def test_carry_forward_marks_last_week_missing_as_red(self):
+        """Simulate: last week had a workout for PUSH but nothing else.
+        This week has no logs. Every non-push body part should be red."""
+        from claude_pet.fitness.body_map import BodyMapWidget
+        from claude_pet.fitness import tracker
+        from datetime import date, timedelta
+        last_monday = date.today() - timedelta(days=date.today().weekday() + 7)
+        tracker.log_workout("PUSH", completed=True, day=last_monday.isoformat())
+        w = BodyMapWidget()
+        # Chest was covered last week (via PUSH) — should NOT be red this week
+        self.assertEqual(w._items["chest"]._state, "grey")
+        # Back was NOT covered last week and not this week → red
+        self.assertEqual(w._items["back"]._state, "red")
+
+
 class BubbleStackingGuardTests(unittest.TestCase):
     """Regression: 'Got it' seemed to not close the coach-note bubble.
 

@@ -265,6 +265,81 @@ class BodyPartCoverageTests(unittest.TestCase):
         self.assertIsNone(coach.body_part_gap_pending(monday))
 
 
+class BodyPartLogTests(unittest.TestCase):
+    """Direct body-part logging (feeds the clickable body map)."""
+
+    def setUp(self):
+        self.cfg, self.db, _ = _isolate()
+        p = mock.patch("claude_pet.fitness.tracker.db_path",
+                        return_value=self.db)
+        p.start(); self.addCleanup(p.stop)
+
+    def test_log_and_query_roundtrip(self):
+        from claude_pet.fitness import tracker
+        tracker.log_body_part("chest")
+        tracker.log_body_part("biceps")
+        # Same call twice on same day is a no-op (INSERT OR REPLACE)
+        tracker.log_body_part("chest")
+        today = date.today().isoformat()
+        parts = tracker.body_parts_between(today, today)
+        self.assertEqual(parts, {"chest", "biceps"})
+
+    def test_unlog_removes_only_that_part(self):
+        from claude_pet.fitness import tracker
+        tracker.log_body_part("chest")
+        tracker.log_body_part("back")
+        tracker.unlog_body_part("chest")
+        today = date.today().isoformat()
+        self.assertEqual(tracker.body_parts_between(today, today), {"back"})
+
+    def test_case_is_normalized_to_lower(self):
+        from claude_pet.fitness import tracker
+        tracker.log_body_part("CHEST")
+        tracker.log_body_part("Rear Delts")
+        today = date.today().isoformat()
+        self.assertEqual(
+            tracker.body_parts_between(today, today),
+            {"chest", "rear delts"},
+        )
+
+
+class WeekCoverageUnionTests(unittest.TestCase):
+    """week_coverage must union focus rollup + direct body-part logs."""
+
+    def setUp(self):
+        self.cfg, self.db, _ = _isolate()
+        p1 = mock.patch("claude_pet.fitness.tracker.db_path",
+                        return_value=self.db)
+        p2 = mock.patch("claude_pet.fitness.config._config_path",
+                        return_value=self.cfg)
+        p1.start(); p2.start()
+        self.addCleanup(p1.stop); self.addCleanup(p2.stop)
+
+    def test_direct_log_populates_trained(self):
+        from claude_pet.fitness import coach, tracker
+        tracker.log_body_part("core")
+        cov = coach.week_coverage()
+        self.assertIn("core", cov["trained"])
+        self.assertNotIn("core", cov["missing"])
+
+    def test_focus_workout_and_direct_log_combined(self):
+        from claude_pet.fitness import coach, tracker
+        tracker.log_workout("PUSH", completed=True)   # chest/shoulders/triceps
+        tracker.log_body_part("biceps")               # direct
+        cov = coach.week_coverage()
+        for want in ("chest", "shoulders", "triceps", "biceps"):
+            self.assertIn(want, cov["trained"])
+        # PULL wasn't done → back still missing
+        self.assertIn("back", cov["missing"])
+
+    def test_last_week_missing_returns_set(self):
+        from claude_pet.fitness import coach
+        missing = coach.last_week_missing()
+        self.assertIsInstance(missing, set)
+        # Nothing was logged for last week → everything missing
+        self.assertGreater(len(missing), 0)
+
+
 class SuggestionsBridgeTests(unittest.TestCase):
     def test_write_and_read_suggestion(self):
         from claude_pet.fitness import coach, config as fcfg

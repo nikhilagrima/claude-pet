@@ -2125,17 +2125,34 @@ class FitnessTab(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.layout = QVBoxLayout(self)
+        # Wrap all content in a QScrollArea — the body map + tables + goal
+        # row together exceed a typical dialog height. Scroll keeps
+        # everything reachable without cramming.
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setStyleSheet(
+            f"QScrollArea {{ background: {NEON['bg_panel']}; border: none; }}"
+        )
+        content = QWidget()
+        self.layout = QVBoxLayout(content)
         self.layout.setContentsMargins(14, 14, 14, 14)
         self.layout.setSpacing(12)
 
         self._build_today_row()
         self._build_goal_row()
         self._build_progress_row()
+        self._build_body_map_row()
         self._build_coverage_row()
         self._build_recent_tables()
         self._build_action_row()
         self.layout.addStretch(1)
+
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
 
         self._ready = False
         self.refresh()
@@ -2214,6 +2231,27 @@ class FitnessTab(QWidget):
         self.progress_label.setTextFormat(Qt.RichText)
         self.progress_label.setWordWrap(True)
         self.layout.addWidget(self.progress_label)
+
+    def _build_body_map_row(self):
+        """Clickable human-body map: green=trained this week, red=carried
+        over from last week (missed then AND now), grey=untrained.
+        Click a part → confirm dialog → tracker.log_body_part."""
+        self.layout.addWidget(self._header("BODY MAP · CLICK TO LOG"))
+        from .fitness.body_map import BodyMapWidget
+        self.body_map = BodyMapWidget()
+        # When user logs/unlogs a part, refresh the chip row + tables below.
+        self.body_map.changed.connect(self.refresh)
+        self.layout.addWidget(self.body_map)
+        # Legend
+        legend = QLabel(
+            f"<span style='color:{NEON['text_muted']}; font-size:11px'>"
+            f"<span style='color:#4CB782'>■</span> trained this week &nbsp;·&nbsp; "
+            f"<span style='color:#EB5757'>■</span> missed last week — do it now &nbsp;·&nbsp; "
+            f"<span style='color:#B4BABF'>■</span> not yet trained this week"
+            f"</span>"
+        )
+        legend.setWordWrap(True)
+        self.layout.addWidget(legend)
 
     def _build_coverage_row(self):
         """Body-part coverage grid — one chip per body part, green when
@@ -2444,6 +2482,10 @@ class FitnessTab(QWidget):
                 self.meal_table.setItem(
                     i, 1, QTableWidgetItem("✓ on plan" if m["on_plan"] else "off plan")
                 )
+
+            # Body map (green/red/grey per part)
+            if hasattr(self, "body_map"):
+                self.body_map.refresh()
 
             # Body-part coverage grid + carry-forward notes
             from .fitness import coach as fcoach

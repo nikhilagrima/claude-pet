@@ -81,7 +81,13 @@ def _week_bounds(d: Optional[date] = None) -> tuple[date, date]:
 
 
 def week_coverage(d: Optional[date] = None) -> dict:
-    """Analyze this week's workout log against the required body-part set.
+    """Analyze this week's coverage against the required body-part set.
+
+    Combines two independent sources of "trained" data:
+      1. focus-based workouts in workout_log (e.g. focus=PUSH covers
+         chest+shoulders+triceps) — via plan.coverage_from_workouts
+      2. direct body-part logs in body_part_log (e.g. user clicked
+         'biceps' on the body map today) — via tracker.body_parts_between
 
     Returns:
       {
@@ -90,7 +96,7 @@ def week_coverage(d: Optional[date] = None) -> dict:
         "sunday": "2026-07-26",
         "workouts_completed": int,
         "workouts_skipped": int,
-        "trained": sorted list[str],
+        "trained": sorted list[str],       # union of both sources
         "missing": sorted list[str],
         "focuses_hit": sorted list[str],
         "focuses_missed": sorted list[str],   # from MUST_HIT_FOCUSES
@@ -111,6 +117,10 @@ def week_coverage(d: Optional[date] = None) -> dict:
     skipped = [w for w in week_workouts if not w["completed"]]
 
     cov = fplan.coverage_from_workouts(week_workouts)
+    # Union in the direct body-part clicks from the body map
+    direct = tracker.body_parts_between(monday.isoformat(), sunday.isoformat())
+    trained = set(cov["trained"]) | direct
+    missing = set(fplan.ALL_BODY_PARTS) - trained
     hit_focuses = {f for f, done in cov["per_focus"].items() if done}
     missed_focuses = [f for f in fplan.MUST_HIT_FOCUSES if f not in hit_focuses]
 
@@ -120,12 +130,40 @@ def week_coverage(d: Optional[date] = None) -> dict:
         "sunday":             sunday.isoformat(),
         "workouts_completed": len(completed),
         "workouts_skipped":   len(skipped),
-        "trained":            sorted(cov["trained"]),
-        "missing":            sorted(cov["missing"]),
+        "trained":            sorted(trained),
+        "missing":            sorted(missing),
         "focuses_hit":        sorted(hit_focuses),
         "focuses_missed":     missed_focuses,
         "days_remaining":     days_remaining,
     }
+
+
+def last_week_missing(d: Optional[date] = None) -> set[str]:
+    """Body parts that were NOT trained last ISO week.
+
+    Used by the body-map widget to render those parts in red as a
+    carry-forward warning. Once the user trains a carry-forward part
+    this week, it flips to green (week_coverage picks it up).
+    """
+    from . import plan as fplan
+    from . import tracker
+    from datetime import timedelta
+    d = d or date.today()
+    monday, _ = _week_bounds(d)
+    last_sunday = monday - timedelta(days=1)
+    last_monday = last_sunday - timedelta(days=6)
+
+    all_workouts = tracker.recent(days=21)["workouts"]
+    last_week_workouts = [
+        w for w in all_workouts
+        if last_monday.isoformat() <= w["day"] <= last_sunday.isoformat()
+    ]
+    cov = fplan.coverage_from_workouts(last_week_workouts)
+    direct = tracker.body_parts_between(
+        last_monday.isoformat(), last_sunday.isoformat()
+    )
+    trained_last = set(cov["trained"]) | direct
+    return set(fplan.ALL_BODY_PARTS) - trained_last
 
 
 def carry_forward_notes(d: Optional[date] = None) -> list[str]:
