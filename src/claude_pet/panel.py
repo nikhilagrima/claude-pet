@@ -1774,6 +1774,152 @@ def _escape_html(text: str) -> str:
             .replace(">", "&gt;").replace('"', "&quot;"))
 
 
+class RemindersTab(QWidget):
+    """Add reminders, view active list, mark done, delete, snooze.
+
+    All logic delegates to reminders.store — no local state. Refresh runs
+    on every action so the table stays current.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(14, 14, 14, 14)
+        self.layout.setSpacing(10)
+        self._build_add_row()
+        self._build_table()
+        self.refresh()
+
+    def _build_add_row(self):
+        header = QLabel(
+            f"<span style='color:{NEON['cyan']}; font-family:Menlo; "
+            f"font-size:11px; letter-spacing:1.5px; font-weight:700'>▸ ADD REMINDER</span>"
+        )
+        self.layout.addWidget(header)
+
+        row = QHBoxLayout()
+        self.title_input = QLineEdit()
+        self.title_input.setPlaceholderText("What should I remind you about?")
+        self.title_input.setMinimumHeight(30)
+        self.title_input.returnPressed.connect(self._add)
+        row.addWidget(self.title_input, 3)
+
+        self.when_input = QLineEdit()
+        self.when_input.setPlaceholderText("When?  e.g. tomorrow 09:00  |  in 2h  |  2026-07-25 14:30")
+        self.when_input.setMinimumHeight(30)
+        self.when_input.returnPressed.connect(self._add)
+        row.addWidget(self.when_input, 3)
+
+        self.add_btn = QPushButton("+ Add")
+        self.add_btn.setObjectName("primary")
+        self.add_btn.setCursor(Qt.PointingHandCursor)
+        self.add_btn.setAutoDefault(False); self.add_btn.setDefault(False)
+        self.add_btn.clicked.connect(self._add)
+        row.addWidget(self.add_btn)
+        self.layout.addLayout(row)
+
+        hint = QLabel(
+            f"<span style='color:{NEON['text_muted']}; font-size:11px'>"
+            f"Fires 1 day before, 5 minutes before, and on time. "
+            f"Formats: <code>tomorrow HH:MM</code>, <code>today HH:MM</code>, "
+            f"<code>in Nm/Nh/Nd</code>, <code>YYYY-MM-DD HH:MM</code>."
+            f"</span>"
+        )
+        hint.setWordWrap(True)
+        self.layout.addWidget(hint)
+
+    def _build_table(self):
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(
+            ["ID", "Due", "Title", "Stages fired", ""]
+        )
+        self.table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(
+            3, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(
+            4, QHeaderView.ResizeToContents)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setSelectionMode(QTableWidget.NoSelection)
+        self.layout.addWidget(self.table, 1)
+
+    def _add(self):
+        from .reminders import store as rstore
+        from .cli import _parse_due
+        title = self.title_input.text().strip()
+        when = self.when_input.text().strip()
+        if not title:
+            QMessageBox.warning(self, "Missing title", "Please write what to remind you about.")
+            return
+        if not when:
+            QMessageBox.warning(self, "Missing time", "Please provide a due time (e.g. 'tomorrow 09:00').")
+            return
+        due = _parse_due(when)
+        if due is None:
+            QMessageBox.warning(self, "Bad time",
+                                 f"Couldn't parse {when!r}. Try 'tomorrow 09:00', "
+                                 f"'in 2h', or '2026-07-25 14:30'.")
+            return
+        rstore.add(title, due)
+        self.title_input.clear()
+        self.when_input.clear()
+        self.refresh()
+
+    def _done(self, reminder_id: int):
+        from .reminders import store as rstore
+        rstore.mark_completed(reminder_id)
+        self.refresh()
+
+    def _delete(self, reminder_id: int):
+        from .reminders import store as rstore
+        confirm = QMessageBox.warning(
+            self, "Delete reminder",
+            f"Delete reminder #{reminder_id}? Cannot be undone.",
+            QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        rstore.delete(reminder_id)
+        self.refresh()
+
+    def refresh(self):
+        from .reminders import store as rstore
+        rows = rstore.list_active()
+        self.table.setRowCount(len(rows))
+        for i, r in enumerate(rows):
+            self.table.setItem(i, 0, QTableWidgetItem(str(r["id"])))
+            self.table.setItem(i, 1, QTableWidgetItem(r["due_at"][:16]))
+            self.table.setItem(i, 2, QTableWidgetItem(r["title"]))
+            self.table.setItem(
+                i, 3, QTableWidgetItem(",".join(r["fired_stages"]) or "-")
+            )
+            # Action buttons in a container
+            container = QWidget()
+            row = QHBoxLayout(container)
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(4)
+            done = QPushButton("Done")
+            done.setCursor(Qt.PointingHandCursor)
+            done.setAutoDefault(False); done.setDefault(False)
+            done.clicked.connect(
+                lambda _=False, rid=r["id"]: self._done(rid)
+            )
+            row.addWidget(done)
+            dele = QPushButton("Delete")
+            dele.setObjectName("danger")
+            dele.setCursor(Qt.PointingHandCursor)
+            dele.setAutoDefault(False); dele.setDefault(False)
+            dele.clicked.connect(
+                lambda _=False, rid=r["id"]: self._delete(rid)
+            )
+            row.addWidget(dele)
+            self.table.setCellWidget(i, 4, container)
+
+
 class FitnessTab(QWidget):
     """Weight goal, progress toward it, workout streak, meals on plan.
 
@@ -2061,9 +2207,11 @@ class MemoryPanel(QDialog):
         self.ergo = ErgonomicsTab()
         self.github = GithubTab()
         self.fitness = FitnessTab()
+        self.reminders = RemindersTab()
         self.settings = SettingsTab()
         for tab in (self.projects, self.graph, self.skills, self.stats,
-                    self.ergo, self.github, self.fitness, self.settings):
+                    self.ergo, self.github, self.fitness, self.reminders,
+                    self.settings):
             tab.setAutoFillBackground(True)
             tab.setStyleSheet(
                 f"background: {NEON['bg_panel']}; border-radius: 10px;"
@@ -2075,6 +2223,7 @@ class MemoryPanel(QDialog):
         tabs.addTab(self.ergo, "ERGO")
         tabs.addTab(self.github, "GITHUB")
         tabs.addTab(self.fitness, "FITNESS")
+        tabs.addTab(self.reminders, "REMIND")
         tabs.addTab(self.settings, "SETTINGS")
         layout.addWidget(tabs, 1)
 
@@ -2109,4 +2258,5 @@ class MemoryPanel(QDialog):
         self.ergo.refresh()
         self.github.refresh()
         self.fitness.refresh()
+        self.reminders.refresh()
         self.settings.refresh()

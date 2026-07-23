@@ -658,6 +658,45 @@ class PetWindow(QWidget):
         if self.frame_idx % 30 == 0:
             self._drain_fitness_scheduler()
 
+        # Personal reminders — same cadence. Fires bubbles for any reminder
+        # whose day-before / 5-min-before / on-time stage has come due and
+        # hasn't been shown yet. At most one bubble per tick to avoid a
+        # wall of pop-ups.
+        if self.frame_idx % 30 == 0:
+            self._drain_reminders()
+
+    def _drain_reminders(self):
+        """Fire at most one reminder bubble per tick."""
+        try:
+            from .reminders import scheduler as rsched, store as rstore
+            from .reminders.overlay import ReminderBubble
+            due = rsched.check_due()
+            if not due:
+                return
+            first = due[0]
+            r = first.reminder
+            stage = first.stage
+            # Mark stage fired immediately so we don't re-pop next tick
+            rstore.mark_stage_fired(r["id"], stage)
+            bubble = ReminderBubble(
+                reminder=r,
+                stage_label=rsched.label_for_stage(stage),
+                on_done=lambda rid=r["id"]: rstore.mark_completed(rid),
+                on_snooze=lambda mins, rid=r["id"]: rstore.snooze(rid, mins),
+                on_dismiss=lambda: None,
+            )
+            self._active_reminder_bubbles = getattr(
+                self, "_active_reminder_bubbles", []
+            )
+            self._active_reminder_bubbles = [
+                b for b in self._active_reminder_bubbles if b.isVisible()
+            ]
+            self._active_reminder_bubbles.append(bubble)
+            bubble.show()
+        except Exception:
+            from .errors import log_exception
+            log_exception("app._drain_reminders")
+
     def _drain_fitness_scheduler(self):
         """Show at most one fitness bubble per tick — workout / weigh-in /
         meal-check based on time-of-day. Also displays the weekly coaching

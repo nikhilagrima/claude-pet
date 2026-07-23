@@ -591,6 +591,115 @@ def cmd_mute(args):
     return 0
 
 
+def _parse_due(text: str) -> "datetime | None":
+    """Accept a few common formats: 'YYYY-MM-DD HH:MM', ISO, 'in 2h',
+    'in 30m', 'tomorrow HH:MM', 'today HH:MM'."""
+    from datetime import datetime, timedelta
+    import re
+    if not text:
+        return None
+    s = text.strip().lower()
+    now = datetime.now().replace(microsecond=0)
+    # `in Nh` / `in Nm` / `in Nd`
+    m = re.match(r"^in\s+(\d+)\s*([mhd])$", s)
+    if m:
+        n = int(m.group(1)); unit = m.group(2)
+        delta = {"m": timedelta(minutes=n),
+                 "h": timedelta(hours=n),
+                 "d": timedelta(days=n)}[unit]
+        return now + delta
+    # `tomorrow HH:MM` / `today HH:MM`
+    m = re.match(r"^(today|tomorrow)\s+(\d{1,2}):(\d{2})$", s)
+    if m:
+        base = now if m.group(1) == "today" else now + timedelta(days=1)
+        return base.replace(hour=int(m.group(2)), minute=int(m.group(3)),
+                             second=0)
+    # ISO / space-separated datetime
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M",
+                "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(text.strip(), fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text.strip())
+    except Exception:
+        return None
+
+
+def cmd_remind(args):
+    """`claude-pet remind <sub> [...]` — personal reminders.
+
+    add "title" --at "..." [--note ...]  — enqueue a reminder
+    list                                 — show active reminders
+    done <id>                            — mark done
+    delete <id>                          — remove entirely
+    snooze <id> <minutes>                — push forward N minutes
+    """
+    from .reminders import store as rstore
+    sub = getattr(args, "rem_sub", "list") or "list"
+    a = getattr(args, "rem_args", []) or []
+
+    if sub == "add":
+        if not a:
+            print('usage: claude-pet remind add "title" --at "..." [--note ...]',
+                  file=sys.stderr)
+            return 2
+        title = " ".join(a).strip()
+        due_text = getattr(args, "rem_at", None)
+        if not due_text:
+            print("--at is required. Try:  --at \"tomorrow 09:00\"  or  "
+                  "--at \"in 2h\"  or  --at \"2026-07-25 14:30\"",
+                  file=sys.stderr)
+            return 2
+        due = _parse_due(due_text)
+        if due is None:
+            print(f"could not parse due time: {due_text!r}", file=sys.stderr)
+            return 2
+        note = getattr(args, "rem_note", "") or ""
+        rid = rstore.add(title, due, note=note)
+        print(f"[claude-pet] reminder #{rid}: {title!r} at {due.isoformat(timespec='minutes')}")
+        return 0
+
+    if sub == "list":
+        rows = rstore.list_active()
+        if not rows:
+            print("no active reminders")
+            return 0
+        print(f"{'ID':>4}  {'DUE':<17}  {'STAGES FIRED':<24}  TITLE")
+        for r in rows:
+            fired = ",".join(r["fired_stages"]) or "-"
+            print(f"{r['id']:>4}  {r['due_at'][:16]:<17}  {fired:<24}  {r['title']}")
+        return 0
+
+    if sub == "done":
+        if not a or not a[0].isdigit():
+            print("usage: claude-pet remind done <id>", file=sys.stderr)
+            return 2
+        ok = rstore.mark_completed(int(a[0]))
+        print(f"[claude-pet] reminder #{a[0]}: {'done' if ok else 'not found'}")
+        return 0 if ok else 1
+
+    if sub == "delete":
+        if not a or not a[0].isdigit():
+            print("usage: claude-pet remind delete <id>", file=sys.stderr)
+            return 2
+        ok = rstore.delete(int(a[0]))
+        print(f"[claude-pet] reminder #{a[0]}: {'deleted' if ok else 'not found'}")
+        return 0 if ok else 1
+
+    if sub == "snooze":
+        if len(a) < 2 or not a[0].isdigit() or not a[1].isdigit():
+            print("usage: claude-pet remind snooze <id> <minutes>", file=sys.stderr)
+            return 2
+        ok = rstore.snooze(int(a[0]), int(a[1]))
+        print(f"[claude-pet] reminder #{a[0]}: {'snoozed' if ok else 'not found'}")
+        return 0 if ok else 1
+
+    print(f"unknown remind subcommand: {sub}", file=sys.stderr)
+    return 1
+
+
 def cmd_fitness(args):
     """`claude-pet fitness <sub> [...]` — coach + tracker CLI surface.
 
@@ -1079,6 +1188,21 @@ def main():
     fit_p.add_argument("fit_args", nargs="*", default=[],
                        help="args for log-*: 'log-weight 79.2' | 'log-workout done|skip' | 'log-meal on|off [note]'")
 
+    rem_p = sub.add_parser(
+        "remind",
+        help="personal reminders: add | list | done | delete | snooze",
+    )
+    rem_p.add_argument("rem_sub", nargs="?", default="list",
+                        choices=["add", "list", "done", "delete", "snooze"])
+    rem_p.add_argument("rem_args", nargs="*", default=[],
+                        help="add \"title\" --at \"YYYY-MM-DD HH:MM\" [--note ...]; "
+                             "done <id>; delete <id>; snooze <id> <minutes>")
+    rem_p.add_argument("--at", dest="rem_at", default=None,
+                        help="due datetime for `add` — e.g. \"2026-07-24 14:30\" "
+                             "or \"in 2h\" or \"tomorrow 09:00\"")
+    rem_p.add_argument("--note", dest="rem_note", default="",
+                        help="optional note for `add`")
+
     update_p = sub.add_parser("update", help="pull latest release from GitHub, reinstall, restart")
     update_p.add_argument("--force", action="store_true",
                           help="reinstall even if already on latest version")
@@ -1175,6 +1299,8 @@ def main():
         return cmd_visibility(args)
     if args.cmd == "fitness":
         return cmd_fitness(args)
+    if args.cmd == "remind":
+        return cmd_remind(args)
     return 0
 
 
