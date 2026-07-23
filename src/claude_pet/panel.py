@@ -18,12 +18,13 @@ from PySide6.QtGui import (
     QAction, QBrush, QColor, QFont, QFontDatabase, QPainter, QPen, QPixmap,
 )
 from PySide6.QtWidgets import (
-    QApplication, QCalendarWidget, QCheckBox, QDateTimeEdit, QDialog,
-    QDoubleSpinBox, QGraphicsDropShadowEffect, QGraphicsEllipseItem,
-    QGraphicsLineItem, QGraphicsScene, QGraphicsSimpleTextItem,
-    QGraphicsView, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget,
-    QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSpinBox,
-    QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
+    QAbstractSpinBox, QApplication, QCalendarWidget, QCheckBox,
+    QDateTimeEdit, QDialog, QDoubleSpinBox, QGraphicsDropShadowEffect,
+    QGraphicsEllipseItem, QGraphicsLineItem, QGraphicsScene,
+    QGraphicsSimpleTextItem, QGraphicsView, QHBoxLayout, QHeaderView,
+    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
+    QPushButton, QScrollArea, QSpinBox, QTableWidget, QTableWidgetItem,
+    QTabWidget, QVBoxLayout, QWidget,
 )
 
 from . import memory
@@ -231,6 +232,19 @@ def _dashboard_stylesheet() -> str:
         background: {NEON['cyan_hi']};
         border-color: {NEON['cyan_hi']};
     }}
+    /* Small square button for +/- steppers next to spinboxes.
+       Default padding (6px 14px) would clip the glyph inside a 28x28 box. */
+    QPushButton#stepper {{
+        padding: 0;
+        font-size: 18px;
+        font-weight: 700;
+        min-height: 0;
+        color: {NEON['text']};
+    }}
+    QPushButton#stepper:hover {{
+        background: {NEON['bg_hover']};
+        border: 1px solid {NEON['border_hi']};
+    }}
 
     /* Tables — Linear list style: no gridlines, subtle row separators,
        hover row background instead of neon selection. */
@@ -345,9 +359,24 @@ def _dashboard_stylesheet() -> str:
     QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {{
         background: {NEON['bg_hover']};
     }}
-    QSpinBox::up-arrow, QDoubleSpinBox::up-arrow,
+    /* Qt's default arrow icons render near-black and disappear on our dark
+       cards. Explicit SVG data-URL images with our theme colors fix that.
+       CSS border-triangle tricks DON'T work here (Qt sub-controls require
+       an image). Note: `#` in hex colors MUST be URL-encoded to `%23`
+       inside a data-URL or Qt drops the image silently. */
+    QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+        image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M0 6 L5 0 L10 6 Z' fill='%23{NEON['text_dim'].lstrip('#')}'/></svg>");
+        width: 10px; height: 6px;
+    }}
     QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
-        width: 8px; height: 8px;
+        image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M0 0 L5 6 L10 0 Z' fill='%23{NEON['text_dim'].lstrip('#')}'/></svg>");
+        width: 10px; height: 6px;
+    }}
+    QSpinBox::up-arrow:hover, QDoubleSpinBox::up-arrow:hover {{
+        image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M0 6 L5 0 L10 6 Z' fill='%23{NEON['text'].lstrip('#')}'/></svg>");
+    }}
+    QSpinBox::down-arrow:hover, QDoubleSpinBox::down-arrow:hover {{
+        image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M0 0 L5 6 L10 0 Z' fill='%23{NEON['text'].lstrip('#')}'/></svg>");
     }}
 
     /* Date/time picker — same visual language as spin boxes, plus a
@@ -375,7 +404,16 @@ def _dashboard_stylesheet() -> str:
         background: {NEON['bg_card']};
     }}
     QDateTimeEdit::drop-down:hover {{ background: {NEON['bg_hover']}; }}
-    QDateTimeEdit::down-arrow {{ width: 10px; height: 10px; }}
+    /* Embed a small white ▼ triangle SVG as the drop-down icon.
+       Qt's default arrow renders near-black and disappears on the dark bg;
+       CSS border-triangles don't apply to Qt sub-controls (image only). */
+    QDateTimeEdit::down-arrow {{
+        image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M0 0 L5 6 L10 0 Z' fill='%23{NEON['text_dim'].lstrip('#')}'/></svg>");
+        width: 10px; height: 6px;
+    }}
+    QDateTimeEdit::down-arrow:hover {{
+        image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M0 0 L5 6 L10 0 Z' fill='%23{NEON['text'].lstrip('#')}'/></svg>");
+    }}
 
     /* Calendar popup */
     QCalendarWidget {{
@@ -1690,6 +1728,8 @@ class SettingsTab(QWidget):
             sb.setRange(1, 240)
             sb.setSuffix(" min")
             sb.setFixedWidth(90)
+            sb.setButtonSymbols(QAbstractSpinBox.NoButtons)
+            sb.setToolTip("Click to type a new value, or focus + ↑/↓ to change.")
             sb.valueChanged.connect(self._save_ergonomics)
             row.addWidget(sb)
             self.layout.addLayout(row)
@@ -1707,7 +1747,9 @@ class SettingsTab(QWidget):
         self.gh_interval = QSpinBox()
         self.gh_interval.setRange(60, 3600)
         self.gh_interval.setSuffix(" s")
-        self.gh_interval.setFixedWidth(120)
+        self.gh_interval.setFixedWidth(110)
+        self.gh_interval.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.gh_interval.setToolTip("Click to type a new value, or focus + ↑/↓ to change.")
         self.gh_interval.valueChanged.connect(self._save_github)
         interval_row.addWidget(self.gh_interval)
         interval_row.addStretch(1)
@@ -1874,22 +1916,28 @@ class RemindersTab(QWidget):
         self.title_input.returnPressed.connect(self._add)
         row.addWidget(self.title_input, 3)
 
-        # Calendar-popup date/time picker. Defaults to tomorrow 09:00 —
-        # the most common reminder shape — but any user pick overrides.
+        # Date/time picker — a plain QDateTimeEdit (typing + spinbox
+        # semantics) plus a separate "📅 Pick" button that opens a
+        # standalone QCalendarWidget dialog. This avoids Qt's built-in
+        # ::drop-down arrow which renders near-black and is invisible on
+        # the dark theme no matter what stylesheet we throw at it.
         from PySide6.QtCore import QTime
         self.when_input = QDateTimeEdit()
         self.when_input.setDisplayFormat("yyyy-MM-dd  HH:mm")
-        self.when_input.setCalendarPopup(True)
+        self.when_input.setCalendarPopup(False)     # we'll open our own
+        self.when_input.setButtonSymbols(QAbstractSpinBox.NoButtons)
         self.when_input.setMinimumHeight(30)
         tomorrow = QDate.currentDate().addDays(1)
         self.when_input.setDateTime(QDateTime(tomorrow, QTime(9, 0)))
         self.when_input.setMinimumDateTime(QDateTime.currentDateTime())
-        cal = self.when_input.calendarWidget()
-        if cal is not None:
-            cal.setGridVisible(True)
-            cal.setFirstDayOfWeek(Qt.Monday)
-            cal.setVerticalHeaderFormat(QCalendarWidget.NoVerticalHeader)
         row.addWidget(self.when_input, 3)
+
+        pick_btn = QPushButton("📅 Pick")
+        pick_btn.setCursor(Qt.PointingHandCursor)
+        pick_btn.setAutoDefault(False); pick_btn.setDefault(False)
+        pick_btn.setMinimumHeight(30)
+        pick_btn.clicked.connect(self._open_calendar_dialog)
+        row.addWidget(pick_btn)
 
         self.add_btn = QPushButton("+ Add")
         self.add_btn.setObjectName("primary")
@@ -1902,7 +1950,8 @@ class RemindersTab(QWidget):
         hint = QLabel(
             f"<span style='color:{NEON['text_muted']}; font-size:11px'>"
             f"Fires 1 day before, 5 minutes before, and on time. "
-            f"Click the date box to open the calendar; click hours or minutes then use ↑/↓ to adjust."
+            f"Click <b>📅 Pick</b> to choose a date + time from a calendar, "
+            f"or type directly into the date field."
             f"</span>"
         )
         hint.setWordWrap(True)
@@ -1931,6 +1980,58 @@ class RemindersTab(QWidget):
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionMode(QTableWidget.NoSelection)
         self.layout.addWidget(self.table, 1)
+
+    def _open_calendar_dialog(self):
+        """Modal picker: month calendar + hour/minute spinboxes. Writes
+        back to self.when_input on OK."""
+        from PySide6.QtCore import QTime
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Pick a date + time")
+        dlg.setModal(True)
+        dlg.setStyleSheet(_dashboard_stylesheet())
+        v = QVBoxLayout(dlg)
+        v.setContentsMargins(14, 14, 14, 14)
+        v.setSpacing(10)
+
+        current = self.when_input.dateTime()
+        cal = QCalendarWidget()
+        cal.setGridVisible(True)
+        cal.setFirstDayOfWeek(Qt.Monday)
+        cal.setVerticalHeaderFormat(QCalendarWidget.NoVerticalHeader)
+        cal.setMinimumDate(QDate.currentDate())
+        cal.setSelectedDate(current.date())
+        v.addWidget(cal)
+
+        time_row = QHBoxLayout()
+        time_row.addWidget(QLabel("Time:"))
+        hh = QSpinBox(); hh.setRange(0, 23)
+        hh.setValue(current.time().hour())
+        hh.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        hh.setFixedWidth(60); hh.setSuffix(" h")
+        mm = QSpinBox(); mm.setRange(0, 59)
+        mm.setValue(current.time().minute())
+        mm.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        mm.setFixedWidth(60); mm.setSuffix(" m")
+        time_row.addWidget(hh); time_row.addWidget(mm); time_row.addStretch(1)
+        v.addLayout(time_row)
+
+        btn_row = QHBoxLayout(); btn_row.addStretch(1)
+        cancel = QPushButton("Cancel")
+        cancel.setCursor(Qt.PointingHandCursor)
+        cancel.setAutoDefault(False); cancel.setDefault(False)
+        cancel.clicked.connect(dlg.reject)
+        ok = QPushButton("Use this")
+        ok.setObjectName("primary")
+        ok.setCursor(Qt.PointingHandCursor)
+        ok.setAutoDefault(False); ok.setDefault(False)
+        ok.clicked.connect(dlg.accept)
+        btn_row.addWidget(cancel); btn_row.addWidget(ok)
+        v.addLayout(btn_row)
+
+        if dlg.exec() == QDialog.Accepted:
+            picked = QDateTime(cal.selectedDate(), QTime(hh.value(), mm.value()))
+            if picked > QDateTime.currentDateTime():
+                self.when_input.setDateTime(picked)
 
     def _add(self):
         from .reminders import store as rstore
@@ -2058,26 +2159,54 @@ class FitnessTab(QWidget):
         self.layout.addWidget(self._header("WEIGHT GOAL"))
         row = QHBoxLayout()
         row.addWidget(QLabel("Current:"))
-        self.current_kg = QDoubleSpinBox()
-        self.current_kg.setDecimals(1)
-        self.current_kg.setRange(20.0, 300.0)
-        self.current_kg.setSingleStep(0.1)
-        self.current_kg.setSuffix(" kg")
-        self.current_kg.setFixedWidth(120)
-        self.current_kg.valueChanged.connect(self._save_profile)
-        row.addWidget(self.current_kg)
+        row.addLayout(self._make_kg_spinner("current_kg"))
         row.addSpacing(20)
         row.addWidget(QLabel("Target:"))
-        self.target_kg = QDoubleSpinBox()
-        self.target_kg.setDecimals(1)
-        self.target_kg.setRange(20.0, 300.0)
-        self.target_kg.setSingleStep(0.1)
-        self.target_kg.setSuffix(" kg")
-        self.target_kg.setFixedWidth(120)
-        self.target_kg.valueChanged.connect(self._save_profile)
-        row.addWidget(self.target_kg)
+        row.addLayout(self._make_kg_spinner("target_kg"))
         row.addStretch(1)
         self.layout.addLayout(row)
+
+    def _make_kg_spinner(self, attr: str) -> QHBoxLayout:
+        """Weight spinner with explicit −/+ QPushButtons.
+
+        Qt's native spinbox arrows render near-black on our dark theme
+        and are invisible no matter what stylesheet trick we try (CSS
+        border-triangles don't apply to ::up-arrow; SVG data-URLs fail
+        in some Qt builds; PlusMinus symbols are painted through
+        stylesheet subcontrols too). Explicit QPushButtons re-use the
+        already-styled button chrome and always render correctly.
+        """
+        sb = QDoubleSpinBox()
+        sb.setDecimals(1)
+        sb.setRange(20.0, 300.0)
+        sb.setSingleStep(0.1)
+        sb.setSuffix(" kg")
+        sb.setFixedWidth(100)
+        sb.setButtonSymbols(QAbstractSpinBox.NoButtons)  # hide invisible native
+        sb.valueChanged.connect(self._save_profile)
+        setattr(self, attr, sb)
+
+        minus = QPushButton("−")
+        minus.setObjectName("stepper")
+        minus.setCursor(Qt.PointingHandCursor)
+        minus.setAutoDefault(False); minus.setDefault(False)
+        minus.setFixedSize(30, 30)
+        minus.clicked.connect(lambda: sb.setValue(sb.value() - sb.singleStep()))
+
+        plus = QPushButton("+")
+        plus.setObjectName("stepper")
+        plus.setCursor(Qt.PointingHandCursor)
+        plus.setAutoDefault(False); plus.setDefault(False)
+        plus.setFixedSize(30, 30)
+        plus.clicked.connect(lambda: sb.setValue(sb.value() + sb.singleStep()))
+
+        lay = QHBoxLayout()
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
+        lay.addWidget(sb)
+        lay.addWidget(minus)
+        lay.addWidget(plus)
+        return lay
 
     def _build_progress_row(self):
         self.layout.addWidget(self._header("PROGRESS"))
@@ -2128,8 +2257,8 @@ class FitnessTab(QWidget):
             else:
                 chip.setStyleSheet(
                     f"background: {NEON['bg_card']};"
-                    f"color: {NEON['text_muted']};"
-                    f"border: 1px solid {NEON['border']};"
+                    f"color: {NEON['text_dim']};"
+                    f"border: 1px solid {NEON['border_hi']};"
                     f"border-radius: 12px;"
                     f"padding: 3px 10px;"
                     f"font-size: 11px;"

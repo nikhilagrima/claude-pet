@@ -221,6 +221,65 @@ class FitnessTabTests(unittest.TestCase):
                              f"{btn.text()!r} autoDefault is True")
 
 
+class BubbleStackingGuardTests(unittest.TestCase):
+    """Regression: 'Got it' seemed to not close the coach-note bubble.
+
+    Root cause: _drain_fitness_scheduler ran every tick and note_needs_showing
+    stayed True until the click, so an identical bubble was created each tick
+    and stacked at the same position. Clicking closed only the top one.
+    The fix is a hard guard: no new fitness bubble while one is visible.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from PySide6.QtWidgets import QApplication
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        self.cfg, self.db, self.note = _isolate()
+        p1 = mock.patch("claude_pet.fitness.config._config_path",
+                        return_value=self.cfg)
+        p2 = mock.patch("claude_pet.fitness.tracker.db_path",
+                        return_value=self.db)
+        p3 = mock.patch("claude_pet.fitness.config._fitness_note_path",
+                        return_value=self.note)
+        p1.start(); p2.start(); p3.start()
+        self.addCleanup(p1.stop); self.addCleanup(p2.stop)
+        self.addCleanup(p3.stop)
+
+    def _drain(self, holder):
+        """Invoke the real drain method on a bare holder object."""
+        from claude_pet.app import PetWindow
+        PetWindow._drain_fitness_scheduler(holder)
+
+    def test_note_bubble_not_stacked_across_ticks(self):
+        """Core regression: while a note bubble is visible, subsequent
+        ticks must NOT create identical stacked copies. The 'Got it'
+        button appears to do nothing when copies are stacked (each click
+        only closes the top one). Guard = single-bubble invariant."""
+        import types
+        self.note.write_text("keep the LISS, add one PULL day")
+        holder = types.SimpleNamespace()
+        self._drain(holder)     # tick 1 → creates the bubble
+        self.assertEqual(len(holder._active_fitness_bubbles), 1)
+        first = holder._active_fitness_bubbles[0]
+        self.assertTrue(first.isVisible())
+        self._drain(holder)     # tick 2 → guard must block a second bubble
+        self._drain(holder)     # tick 3 → still blocked
+        self._drain(holder)     # tick 4 → still blocked
+        self.assertEqual(
+            len(holder._active_fitness_bubbles), 1,
+            "note bubble was re-created on subsequent ticks — 'Got it' "
+            "click would only close the topmost stacked copy, making it "
+            "look like the button is broken",
+        )
+        self.assertIs(holder._active_fitness_bubbles[0], first)
+        # Click 'Got it' → the visible bubble is hidden + scheduled for
+        # deletion. The visibility filter in the guard drops it.
+        first._finish()
+        self.assertFalse(first.isVisible())
+
+
 class SoundCooldownTests(unittest.TestCase):
     """Same key can't fire twice within COOLDOWN_S."""
 

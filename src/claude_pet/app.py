@@ -709,6 +709,18 @@ class PetWindow(QWidget):
             from .fitness import overlay as foverlay
             from .fitness import plan as fplan
 
+            # HARD GUARD: never spawn a new fitness bubble while one is
+            # still on screen. Without this, note/suggestion bubbles whose
+            # "shown" flag only flips on click get re-created EVERY tick —
+            # the user clicks "Got it", the top bubble closes, and an
+            # identical stacked copy is revealed underneath ("not exiting").
+            self._active_fitness_bubbles = [
+                b for b in getattr(self, "_active_fitness_bubbles", [])
+                if b.isVisible()
+            ]
+            if self._active_fitness_bubbles:
+                return
+
             # First check: is a coaching note waiting to be shown once?
             if fcoach.note_needs_showing():
                 note = fcoach.latest_note()
@@ -716,12 +728,6 @@ class PetWindow(QWidget):
                     bubble = foverlay.CoachNoteBubble(
                         note, on_close=fcoach.mark_note_shown,
                     )
-                    self._active_fitness_bubbles = getattr(
-                        self, "_active_fitness_bubbles", []
-                    )
-                    self._active_fitness_bubbles = [
-                        b for b in self._active_fitness_bubbles if b.isVisible()
-                    ]
                     self._active_fitness_bubbles.append(bubble)
                     bubble.show()
                     return       # don't stack a reminder on top
@@ -734,12 +740,6 @@ class PetWindow(QWidget):
                     bubble = foverlay.CoachNoteBubble(
                         sug, on_close=fcoach.mark_suggestions_shown,
                     )
-                    self._active_fitness_bubbles = getattr(
-                        self, "_active_fitness_bubbles", []
-                    )
-                    self._active_fitness_bubbles = [
-                        b for b in self._active_fitness_bubbles if b.isVisible()
-                    ]
                     self._active_fitness_bubbles.append(bubble)
                     bubble.show()
                     return
@@ -748,12 +748,6 @@ class PetWindow(QWidget):
             gap_msg = fcoach.body_part_gap_pending()
             if gap_msg:
                 bubble = foverlay.CoachNoteBubble(gap_msg, on_close=lambda: None)
-                self._active_fitness_bubbles = getattr(
-                    self, "_active_fitness_bubbles", []
-                )
-                self._active_fitness_bubbles = [
-                    b for b in self._active_fitness_bubbles if b.isVisible()
-                ]
                 self._active_fitness_bubbles.append(bubble)
                 bubble.show()
                 return
@@ -762,13 +756,6 @@ class PetWindow(QWidget):
             due = fsched.check_due()
             if not due:
                 return
-
-            self._active_fitness_bubbles = getattr(
-                self, "_active_fitness_bubbles", []
-            )
-            self._active_fitness_bubbles = [
-                b for b in self._active_fitness_bubbles if b.isVisible()
-            ]
 
             if due == "workout":
                 bubble = foverlay.WorkoutBubble(

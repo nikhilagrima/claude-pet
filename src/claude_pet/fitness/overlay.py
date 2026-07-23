@@ -20,8 +20,8 @@ from typing import Callable, Optional
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
-    QDialog, QDoubleSpinBox, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QVBoxLayout, QWidget,
+    QAbstractSpinBox, QDialog, QDoubleSpinBox, QHBoxLayout, QLabel,
+    QLineEdit, QPushButton, QVBoxLayout, QWidget,
 )
 
 
@@ -74,6 +74,18 @@ QPushButton#primary {{
 QPushButton#primary:hover {{
     background: {MONO['text_dim']};
 }}
+/* Small square +/- stepper: default padding (8px 16px) clips the glyph
+   inside a 32x32 button. */
+QPushButton#stepper {{
+    padding: 0;
+    font-size: 20px;
+    font-weight: 700;
+    min-height: 0;
+}}
+QPushButton#stepper:hover {{
+    background: #141414;
+    border: 1px solid {MONO['text_muted']};
+}}
 QLineEdit, QDoubleSpinBox {{
     background: {MONO['bg_soft']};
     color: {MONO['text']};
@@ -85,6 +97,32 @@ QLineEdit, QDoubleSpinBox {{
 }}
 QLineEdit:focus, QDoubleSpinBox:focus {{
     border: 1px solid {MONO['text_dim']};
+}}
+QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
+    background: transparent;
+    border: none;
+    width: 22px;
+}}
+QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {{
+    background: #141414;
+}}
+/* Explicit SVG arrow icons — Qt's default is near-black and invisible
+   on the black bubble. Data-URL SVG in theme colors is the only reliable
+   pattern. `#` in hex colors MUST be URL-encoded to `%23` inside a
+   data-URL or Qt drops the image silently. */
+QDoubleSpinBox::up-arrow {{
+    image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M0 6 L5 0 L10 6 Z' fill='%23{MONO['text_dim'].lstrip('#')}'/></svg>");
+    width: 10px; height: 6px;
+}}
+QDoubleSpinBox::down-arrow {{
+    image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M0 0 L5 6 L10 0 Z' fill='%23{MONO['text_dim'].lstrip('#')}'/></svg>");
+    width: 10px; height: 6px;
+}}
+QDoubleSpinBox::up-arrow:hover {{
+    image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M0 6 L5 0 L10 6 Z' fill='%23{MONO['text'].lstrip('#')}'/></svg>");
+}}
+QDoubleSpinBox::down-arrow:hover {{
+    image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M0 0 L5 6 L10 0 Z' fill='%23{MONO['text'].lstrip('#')}'/></svg>");
 }}
 """
 
@@ -202,9 +240,35 @@ class WeighInBubble(QDialog):
         self.spin.setSingleStep(0.1)
         self.spin.setValue(float(current_kg))
         self.spin.setSuffix(" kg")
-        # Give the spinbox generous vertical room so up/down arrows are clickable.
         self.spin.setMinimumHeight(32)
-        layout.addWidget(self.spin)
+        # Native spinbox arrows render near-black on the black bubble and
+        # are invisible. Hide them and add explicit −/+ QPushButtons that
+        # use the already-styled monochrome button chrome.
+        self.spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+
+        spin_row = QHBoxLayout()
+        spin_row.setContentsMargins(0, 0, 0, 0)
+        spin_row.setSpacing(6)
+        spin_row.addWidget(self.spin, 1)
+        minus_btn = QPushButton("−")
+        minus_btn.setObjectName("stepper")
+        minus_btn.setCursor(Qt.PointingHandCursor)
+        minus_btn.setAutoDefault(False); minus_btn.setDefault(False)
+        minus_btn.setFixedSize(34, 34)
+        minus_btn.clicked.connect(
+            lambda: self.spin.setValue(self.spin.value() - self.spin.singleStep())
+        )
+        plus_btn = QPushButton("+")
+        plus_btn.setObjectName("stepper")
+        plus_btn.setCursor(Qt.PointingHandCursor)
+        plus_btn.setAutoDefault(False); plus_btn.setDefault(False)
+        plus_btn.setFixedSize(34, 34)
+        plus_btn.clicked.connect(
+            lambda: self.spin.setValue(self.spin.value() + self.spin.singleStep())
+        )
+        spin_row.addWidget(minus_btn)
+        spin_row.addWidget(plus_btn)
+        layout.addLayout(spin_row)
 
         row = QHBoxLayout()
         row.addStretch(1)
