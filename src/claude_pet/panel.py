@@ -18,10 +18,10 @@ from PySide6.QtGui import (
     QAction, QBrush, QColor, QFont, QFontDatabase, QPainter, QPen, QPixmap,
 )
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QDialog, QGraphicsDropShadowEffect,
-    QGraphicsEllipseItem, QGraphicsLineItem, QGraphicsScene,
-    QGraphicsSimpleTextItem, QGraphicsView, QHBoxLayout, QHeaderView,
-    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
+    QApplication, QCheckBox, QDialog, QDoubleSpinBox,
+    QGraphicsDropShadowEffect, QGraphicsEllipseItem, QGraphicsLineItem,
+    QGraphicsScene, QGraphicsSimpleTextItem, QGraphicsView, QHBoxLayout,
+    QHeaderView, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
     QPushButton, QScrollArea, QSpinBox, QTableWidget, QTableWidgetItem,
     QTabWidget, QVBoxLayout, QWidget,
 )
@@ -1774,6 +1774,258 @@ def _escape_html(text: str) -> str:
             .replace(">", "&gt;").replace('"', "&quot;"))
 
 
+class FitnessTab(QWidget):
+    """Weight goal, progress toward it, workout streak, meals on plan.
+
+    Live-read from fitness/tracker.db on every refresh — no caching, no
+    background threads. Weight goal + profile writable via the input rows;
+    everything else is read-only summaries of the log tables.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(14, 14, 14, 14)
+        self.layout.setSpacing(12)
+
+        self._build_today_row()
+        self._build_goal_row()
+        self._build_progress_row()
+        self._build_recent_tables()
+        self._build_action_row()
+        self.layout.addStretch(1)
+
+        self._ready = False
+        self.refresh()
+
+    # ---- construction ----------------------------------------------------
+    def _header(self, text: str) -> QLabel:
+        h = QLabel(
+            f"<span style='color:{NEON['cyan']}; font-family:Menlo; "
+            f"font-size:11px; letter-spacing:1.5px; font-weight:700'>▸ {text}</span>"
+        )
+        return h
+
+    def _build_today_row(self):
+        self.layout.addWidget(self._header("TODAY"))
+        self.today_label = QLabel()
+        self.today_label.setWordWrap(True)
+        self.today_label.setTextFormat(Qt.RichText)
+        self.layout.addWidget(self.today_label)
+
+    def _build_goal_row(self):
+        self.layout.addWidget(self._header("WEIGHT GOAL"))
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Current:"))
+        self.current_kg = QDoubleSpinBox()
+        self.current_kg.setDecimals(1)
+        self.current_kg.setRange(20.0, 300.0)
+        self.current_kg.setSingleStep(0.1)
+        self.current_kg.setSuffix(" kg")
+        self.current_kg.setFixedWidth(120)
+        self.current_kg.valueChanged.connect(self._save_profile)
+        row.addWidget(self.current_kg)
+        row.addSpacing(20)
+        row.addWidget(QLabel("Target:"))
+        self.target_kg = QDoubleSpinBox()
+        self.target_kg.setDecimals(1)
+        self.target_kg.setRange(20.0, 300.0)
+        self.target_kg.setSingleStep(0.1)
+        self.target_kg.setSuffix(" kg")
+        self.target_kg.setFixedWidth(120)
+        self.target_kg.valueChanged.connect(self._save_profile)
+        row.addWidget(self.target_kg)
+        row.addStretch(1)
+        self.layout.addLayout(row)
+
+    def _build_progress_row(self):
+        self.layout.addWidget(self._header("PROGRESS"))
+        self.progress_label = QLabel()
+        self.progress_label.setTextFormat(Qt.RichText)
+        self.progress_label.setWordWrap(True)
+        self.layout.addWidget(self.progress_label)
+
+    def _build_recent_tables(self):
+        # Weight trend — last 14 days table.
+        self.layout.addWidget(self._header("LAST 14 DAYS · WEIGHT"))
+        self.weight_table = QTableWidget(0, 2)
+        self.weight_table.setHorizontalHeaderLabels(["Day", "Weight (kg)"])
+        self.weight_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.Stretch)
+        self.weight_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeToContents)
+        self.weight_table.verticalHeader().setVisible(False)
+        self.weight_table.setMaximumHeight(160)
+        self.weight_table.setSelectionMode(QTableWidget.NoSelection)
+        self.layout.addWidget(self.weight_table)
+
+        # Workouts + meals — side by side.
+        two_col = QHBoxLayout()
+        left = QVBoxLayout()
+        left.addWidget(self._header("WORKOUTS · 14D"))
+        self.workout_table = QTableWidget(0, 2)
+        self.workout_table.setHorizontalHeaderLabels(["Day", "Focus / State"])
+        self.workout_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.Stretch)
+        self.workout_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeToContents)
+        self.workout_table.verticalHeader().setVisible(False)
+        self.workout_table.setMaximumHeight(200)
+        self.workout_table.setSelectionMode(QTableWidget.NoSelection)
+        left.addWidget(self.workout_table)
+        two_col.addLayout(left, 1)
+
+        right = QVBoxLayout()
+        right.addWidget(self._header("MEALS · 14D"))
+        self.meal_table = QTableWidget(0, 2)
+        self.meal_table.setHorizontalHeaderLabels(["Day", "On plan"])
+        self.meal_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.Stretch)
+        self.meal_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeToContents)
+        self.meal_table.verticalHeader().setVisible(False)
+        self.meal_table.setMaximumHeight(200)
+        self.meal_table.setSelectionMode(QTableWidget.NoSelection)
+        right.addWidget(self.meal_table)
+        two_col.addLayout(right, 1)
+        self.layout.addLayout(two_col)
+
+    def _build_action_row(self):
+        row = QHBoxLayout()
+        self.log_weight_btn = QPushButton("Log weight now")
+        self.log_weight_btn.setCursor(Qt.PointingHandCursor)
+        self.log_weight_btn.setAutoDefault(False); self.log_weight_btn.setDefault(False)
+        self.log_weight_btn.clicked.connect(self._log_weight_now)
+        row.addWidget(self.log_weight_btn)
+
+        self.log_workout_btn = QPushButton("Mark today's workout done")
+        self.log_workout_btn.setCursor(Qt.PointingHandCursor)
+        self.log_workout_btn.setObjectName("primary")
+        self.log_workout_btn.setAutoDefault(False); self.log_workout_btn.setDefault(False)
+        self.log_workout_btn.clicked.connect(self._log_workout_now)
+        row.addWidget(self.log_workout_btn)
+
+        self.meal_on_btn = QPushButton("Meal ✓ on plan")
+        self.meal_on_btn.setCursor(Qt.PointingHandCursor)
+        self.meal_on_btn.setAutoDefault(False); self.meal_on_btn.setDefault(False)
+        self.meal_on_btn.clicked.connect(lambda: self._log_meal_now(True))
+        row.addWidget(self.meal_on_btn)
+
+        self.meal_off_btn = QPushButton("Meal off plan")
+        self.meal_off_btn.setCursor(Qt.PointingHandCursor)
+        self.meal_off_btn.setAutoDefault(False); self.meal_off_btn.setDefault(False)
+        self.meal_off_btn.clicked.connect(lambda: self._log_meal_now(False))
+        row.addWidget(self.meal_off_btn)
+        row.addStretch(1)
+        self.layout.addLayout(row)
+
+    # ---- persistence -----------------------------------------------------
+    def _save_profile(self, *_):
+        if not getattr(self, "_ready", False):
+            return
+        from .fitness import config as fcfg
+        cfg = fcfg.load()
+        prof = cfg.get("profile", {})
+        prof["weight_kg"] = float(self.current_kg.value())
+        prof["target_weight_kg"] = float(self.target_kg.value())
+        cfg["profile"] = prof
+        fcfg.save(cfg)
+        self.refresh()   # recompute progress + targets
+
+    def _log_weight_now(self):
+        from .fitness import tracker as ftrack
+        ftrack.log_weight(float(self.current_kg.value()))
+        self.refresh()
+
+    def _log_workout_now(self):
+        from .fitness import plan as fplan, tracker as ftrack
+        from datetime import datetime
+        day = fplan.day_plan_for(datetime.now().weekday())
+        ftrack.log_workout(day.focus, completed=True)
+        self.refresh()
+
+    def _log_meal_now(self, on_plan: bool):
+        from .fitness import tracker as ftrack
+        ftrack.log_meal(on_plan, "")
+        self.refresh()
+
+    # ---- refresh ---------------------------------------------------------
+    def refresh(self):
+        from .fitness import plan as fplan
+        from .fitness import config as fcfg
+        from .fitness import tracker as ftrack
+        from datetime import datetime, date, timedelta
+        self._ready = False
+        try:
+            cfg = fcfg.load()
+            prof = cfg.get("profile", {})
+            weight_kg = float(prof.get("weight_kg", 80))
+            target_kg = float(prof.get("target_weight_kg", weight_kg - 8))
+            self.current_kg.setValue(weight_kg)
+            self.target_kg.setValue(target_kg)
+
+            # Today section
+            day = fplan.day_plan_for(datetime.now().weekday())
+            targets = fplan.daily_targets(
+                weight_kg=weight_kg,
+                height_cm=float(prof.get("height_cm", 175)),
+                age=int(prof.get("age", 30)),
+                male=bool(prof.get("male", True)),
+                activity_factor=float(prof.get("activity_factor", 1.375)),
+            )
+            self.today_label.setText(
+                f"<b>{_escape_html(day.label)}</b><br>"
+                f"<span style='color:{NEON['text_dim']}'>"
+                f"target: <b style='color:{NEON['text']}'>{targets.target_kcal}</b> kcal · "
+                f"<b style='color:{NEON['text']}'>{targets.protein_g}</b> g protein · "
+                f"<b style='color:{NEON['text']}'>{targets.steps:,}</b> steps</span>"
+            )
+
+            # Progress toward goal
+            latest = ftrack.latest_weight() or weight_kg
+            delta_needed = weight_kg - target_kg
+            delta_done = weight_kg - latest
+            if delta_needed > 0:
+                pct = max(0.0, min(1.0, delta_done / delta_needed)) * 100
+            else:
+                pct = 100.0 if latest <= target_kg else 0.0
+            bar_full = int(round(pct / 5))    # 20-char bar
+            bar = "█" * bar_full + "░" * (20 - bar_full)
+            self.progress_label.setText(
+                f"<span style='font-family:Menlo'>"
+                f"<span style='color:{NEON['text']}'>{latest:.1f}</span> "
+                f"→ <span style='color:{NEON['cyan']}'>{target_kg:.1f}</span> kg &nbsp;·&nbsp; "
+                f"<span style='color:{NEON['text_dim']}'>{bar}</span> "
+                f"<span style='color:{NEON['text']}'>{pct:.0f}%</span>"
+                f"</span>"
+            )
+
+            # Tables
+            recent = ftrack.recent(days=14)
+            weights = recent["weights"]
+            self.weight_table.setRowCount(len(weights))
+            for i, w in enumerate(weights):
+                self.weight_table.setItem(i, 0, QTableWidgetItem(w["day"]))
+                self.weight_table.setItem(i, 1, QTableWidgetItem(f"{w['weight_kg']:.1f}"))
+
+            workouts = recent["workouts"]
+            self.workout_table.setRowCount(len(workouts))
+            for i, w in enumerate(workouts):
+                self.workout_table.setItem(i, 0, QTableWidgetItem(w["day"]))
+                state = f"{w['focus']} · " + ("done" if w["completed"] else "skipped")
+                self.workout_table.setItem(i, 1, QTableWidgetItem(state))
+
+            meals = recent["meals"]
+            self.meal_table.setRowCount(len(meals))
+            for i, m in enumerate(meals):
+                self.meal_table.setItem(i, 0, QTableWidgetItem(m["day"]))
+                self.meal_table.setItem(
+                    i, 1, QTableWidgetItem("✓ on plan" if m["on_plan"] else "off plan")
+                )
+        finally:
+            self._ready = True
+
+
 class MemoryPanel(QDialog):
     """The floating panel that opens when you click the pet.
 
@@ -1808,9 +2060,10 @@ class MemoryPanel(QDialog):
         self.stats = StatsTab()
         self.ergo = ErgonomicsTab()
         self.github = GithubTab()
+        self.fitness = FitnessTab()
         self.settings = SettingsTab()
         for tab in (self.projects, self.graph, self.skills, self.stats,
-                    self.ergo, self.github, self.settings):
+                    self.ergo, self.github, self.fitness, self.settings):
             tab.setAutoFillBackground(True)
             tab.setStyleSheet(
                 f"background: {NEON['bg_panel']}; border-radius: 10px;"
@@ -1821,6 +2074,7 @@ class MemoryPanel(QDialog):
         tabs.addTab(self.stats, "STATS")
         tabs.addTab(self.ergo, "ERGO")
         tabs.addTab(self.github, "GITHUB")
+        tabs.addTab(self.fitness, "FITNESS")
         tabs.addTab(self.settings, "SETTINGS")
         layout.addWidget(tabs, 1)
 
@@ -1854,4 +2108,5 @@ class MemoryPanel(QDialog):
         self.stats.refresh()
         self.ergo.refresh()
         self.github.refresh()
+        self.fitness.refresh()
         self.settings.refresh()

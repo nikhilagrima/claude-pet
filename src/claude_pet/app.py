@@ -101,10 +101,21 @@ class SoundPlayer:
         "error":     {"count": 1, "interval": 0.00},
     }
 
+    # Per-key cooldown — same sound key can't fire twice within this window.
+    # Kills the "keep beeping" experience when Claude Code emits a burst of
+    # Stop / UserPromptSubmit events during active work (each was chirping
+    # even after count=1). Error stays at 0 so failures are never suppressed.
+    COOLDOWN_S = {
+        "success":   5.0,
+        "attention": 5.0,
+        "error":     0.0,
+    }
+
     def __init__(self):
         self.sounds = _resolve_sounds()
         self._procs = []
         self._lock = threading.Lock()
+        self._last_played_at: dict[str, float] = {}
 
     def play(self, key):
         # Global mute — checked fresh every call so a UI toggle or `claude-pet
@@ -116,6 +127,14 @@ class SoundPlayer:
                 return
         except Exception:
             pass    # never let the mute check itself block sound
+        # Per-key cooldown — silently drop repeat plays inside the window.
+        cooldown = self.COOLDOWN_S.get(key, 0.0)
+        if cooldown > 0:
+            now = time.time()
+            last = self._last_played_at.get(key, 0.0)
+            if now - last < cooldown:
+                return
+            self._last_played_at[key] = now
         path = self.sounds.get(key)
         if not path:
             return
