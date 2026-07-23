@@ -69,6 +69,137 @@ def _iso_week_id(d: Optional[date] = None) -> str:
     return f"{year:04d}-W{week:02d}"
 
 
+# --- BODY-PART COVERAGE + WEEKLY GAP ANALYSIS ------------------------------
+
+def _week_bounds(d: Optional[date] = None) -> tuple[date, date]:
+    """(monday, sunday) for the ISO week containing d."""
+    from datetime import timedelta
+    d = d or date.today()
+    monday = d - timedelta(days=d.weekday())
+    sunday = monday + timedelta(days=6)
+    return monday, sunday
+
+
+def week_coverage(d: Optional[date] = None) -> dict:
+    """Analyze this week's workout log against the required body-part set.
+
+    Returns:
+      {
+        "week": "2026-W30",
+        "monday": "2026-07-20",
+        "sunday": "2026-07-26",
+        "workouts_completed": int,
+        "workouts_skipped": int,
+        "trained": sorted list[str],
+        "missing": sorted list[str],
+        "focuses_hit": sorted list[str],
+        "focuses_missed": sorted list[str],   # from MUST_HIT_FOCUSES
+        "days_remaining": int,
+      }
+    """
+    from . import plan as fplan
+    from . import tracker
+    from datetime import timedelta
+    d = d or date.today()
+    monday, sunday = _week_bounds(d)
+    days_remaining = max(0, (sunday - d).days)
+
+    all_workouts = tracker.recent(days=14)["workouts"]
+    week_workouts = [w for w in all_workouts
+                     if monday.isoformat() <= w["day"] <= sunday.isoformat()]
+    completed = [w for w in week_workouts if w["completed"]]
+    skipped = [w for w in week_workouts if not w["completed"]]
+
+    cov = fplan.coverage_from_workouts(week_workouts)
+    hit_focuses = {f for f, done in cov["per_focus"].items() if done}
+    missed_focuses = [f for f in fplan.MUST_HIT_FOCUSES if f not in hit_focuses]
+
+    return {
+        "week":               _iso_week_id(d),
+        "monday":             monday.isoformat(),
+        "sunday":             sunday.isoformat(),
+        "workouts_completed": len(completed),
+        "workouts_skipped":   len(skipped),
+        "trained":            sorted(cov["trained"]),
+        "missing":            sorted(cov["missing"]),
+        "focuses_hit":        sorted(hit_focuses),
+        "focuses_missed":     missed_focuses,
+        "days_remaining":     days_remaining,
+    }
+
+
+def carry_forward_notes(d: Optional[date] = None) -> list[str]:
+    """Return short human strings describing what to make up.
+
+    If focus X is missing AND there are days remaining in the week, suggest
+    slotting it in the next unused day. Otherwise mark it 'carry to next
+    week'. Called by the pet's daily nudge and by the SessionStart context.
+    """
+    from datetime import timedelta
+    d = d or date.today()
+    cov = week_coverage(d)
+    notes: list[str] = []
+    if cov["days_remaining"] > 0:
+        for focus in cov["focuses_missed"]:
+            notes.append(
+                f"{focus} not done yet — target it in the next "
+                f"{cov['days_remaining']} day(s)"
+            )
+    else:
+        for focus in cov["focuses_missed"]:
+            notes.append(f"{focus} missed this week — carry to next week")
+    return notes
+
+
+# --- SUGGESTIONS FILE (Claude Code → pet, similar to fitness_note.txt) -----
+# `fitness_note.txt` is the weekly coaching adjustment. `suggestions.txt`
+# is the more open channel: Claude Code writes exercise / diet / supplement
+# advice (possibly after WebSearch) and the pet displays it once via
+# the existing CoachNoteBubble. Structure: plain text, one advice item
+# per paragraph, blank-line separated.
+
+def _suggestions_path() -> Path:
+    return Path.home() / ".claude" / "claude-pet" / "fitness_suggestions.txt"
+
+
+def latest_suggestions() -> Optional[str]:
+    p = _suggestions_path()
+    if not p.exists():
+        return None
+    try:
+        return p.read_text().strip() or None
+    except Exception:
+        return None
+
+
+def suggestions_need_showing() -> bool:
+    from . import config as fcfg
+    p = _suggestions_path()
+    if not p.exists():
+        return False
+    cfg = fcfg.load()
+    shown = str(cfg.get("_suggestions_shown_date") or "")
+    try:
+        mtime_day = date.fromtimestamp(p.stat().st_mtime).isoformat()
+    except Exception:
+        return False
+    return mtime_day > shown
+
+
+def mark_suggestions_shown() -> None:
+    from . import config as fcfg
+    cfg = fcfg.load()
+    cfg["_suggestions_shown_date"] = date.today().isoformat()
+    fcfg.save(cfg)
+
+
+def write_suggestion(text: str) -> None:
+    """Overwrite (not append) the suggestions file. Pet shows it once."""
+    p = _suggestions_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(text.strip() + "\n")
+
+
 def weekly_adjustment_pending() -> bool:
     """True iff (a) agentic coach enabled AND (b) today is Sunday (weekday 6)
     AND (c) no note has been generated for the current ISO week."""

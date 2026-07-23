@@ -112,6 +112,67 @@ def day_plan_for(weekday_index: int) -> DayPlan:
 DAILY_STEP_TARGET = 9000
 
 
+# --- BODY-PART COVERAGE -----------------------------------------------------
+# Maps a workout `focus` string (stored in workout_log) to the body parts
+# that focus trains. Used to answer "which body parts have I hit this week?"
+# and "what's missing?" so Claude Code can propose a make-up plan.
+BODY_PART_MAP: dict[str, tuple[str, ...]] = {
+    "PUSH":         ("chest", "shoulders", "triceps"),
+    "PULL":         ("back", "biceps", "rear delts"),
+    "LEGS":         ("quads", "hamstrings", "glutes", "calves"),
+    "CARDIO+CORE":  ("core", "cardio"),
+    "HIIT":         ("cardio", "full-body"),
+    "RECOVERY":     ("recovery",),
+    "REST":         (),
+}
+
+
+# The full set of body parts we care about tracking through a week. Ordered
+# by upper→lower→conditioning so gap displays read naturally.
+ALL_BODY_PARTS: tuple[str, ...] = (
+    "chest", "shoulders", "triceps",
+    "back", "biceps", "rear delts",
+    "quads", "hamstrings", "glutes", "calves",
+    "core", "cardio",
+)
+
+
+def body_parts_for_focus(focus: str) -> tuple[str, ...]:
+    """Return body parts trained by a given workout focus (case-insensitive)."""
+    return BODY_PART_MAP.get(focus.upper(), ())
+
+
+def coverage_from_workouts(workouts: list[dict]) -> dict:
+    """Given a list of completed workout dicts (with 'focus' + 'completed'),
+    return {'trained': set[str], 'missing': set[str], 'per_focus': dict}.
+
+    Only counts workouts where `completed` is True — a skipped workout
+    doesn't cover its body parts.
+    """
+    trained: set[str] = set()
+    per_focus: dict[str, bool] = {f: False for f in BODY_PART_MAP}
+    for w in workouts:
+        if not w.get("completed"):
+            continue
+        focus = (w.get("focus") or "").upper()
+        per_focus[focus] = True
+        for bp in body_parts_for_focus(focus):
+            trained.add(bp)
+    missing = set(ALL_BODY_PARTS) - trained
+    # Recovery, rest, cardio-only don't count as "must-cover" — allow the
+    # weekly checker to focus on strength groups.
+    return {
+        "trained": trained,
+        "missing": missing,
+        "per_focus": per_focus,
+    }
+
+
+# Focus categories the weekly plan wants hit every week — used to answer
+# "did you skip any major muscle group this week?"
+MUST_HIT_FOCUSES: tuple[str, ...] = ("PUSH", "PULL", "LEGS")
+
+
 # --- FOOD GUIDE (Kerala/Indian-friendly) ------------------------------------
 FOOD_PRINCIPLES: tuple[str, ...] = (
     "~500 kcal daily deficit",

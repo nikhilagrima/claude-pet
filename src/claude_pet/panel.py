@@ -11,19 +11,19 @@ import json
 import math
 import os
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from PySide6.QtCore import Qt, QPointF, QTimer, QRectF
+from PySide6.QtCore import Qt, QPointF, QTimer, QRectF, QDateTime, QDate
 from PySide6.QtGui import (
     QAction, QBrush, QColor, QFont, QFontDatabase, QPainter, QPen, QPixmap,
 )
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QDialog, QDoubleSpinBox,
-    QGraphicsDropShadowEffect, QGraphicsEllipseItem, QGraphicsLineItem,
-    QGraphicsScene, QGraphicsSimpleTextItem, QGraphicsView, QHBoxLayout,
-    QHeaderView, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
-    QPushButton, QScrollArea, QSpinBox, QTableWidget, QTableWidgetItem,
-    QTabWidget, QVBoxLayout, QWidget,
+    QApplication, QCalendarWidget, QCheckBox, QDateTimeEdit, QDialog,
+    QDoubleSpinBox, QGraphicsDropShadowEffect, QGraphicsEllipseItem,
+    QGraphicsLineItem, QGraphicsScene, QGraphicsSimpleTextItem,
+    QGraphicsView, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget,
+    QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSpinBox,
+    QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from . import memory
@@ -348,6 +348,76 @@ def _dashboard_stylesheet() -> str:
     QSpinBox::up-arrow, QDoubleSpinBox::up-arrow,
     QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
         width: 8px; height: 8px;
+    }}
+
+    /* Date/time picker — same visual language as spin boxes, plus a
+       dark-themed calendar popup so the drop-down doesn't glare white. */
+    QDateTimeEdit {{
+        background: {NEON['bg_card']};
+        color: {NEON['text']};
+        border: 1px solid {NEON['border']};
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-family: {_neon_font()};
+        font-size: 13px;
+        min-height: 20px;
+    }}
+    QDateTimeEdit:hover {{ border: 1px solid {NEON['border_hi']}; }}
+    QDateTimeEdit:focus {{
+        border: 1px solid {NEON['cyan']};
+        background: {NEON['bg_hover']};
+    }}
+    QDateTimeEdit::drop-down {{
+        subcontrol-origin: padding;
+        subcontrol-position: top right;
+        width: 24px;
+        border-left: 1px solid {NEON['border']};
+        background: {NEON['bg_card']};
+    }}
+    QDateTimeEdit::drop-down:hover {{ background: {NEON['bg_hover']}; }}
+    QDateTimeEdit::down-arrow {{ width: 10px; height: 10px; }}
+
+    /* Calendar popup */
+    QCalendarWidget {{
+        background: {NEON['bg_panel']};
+        color: {NEON['text']};
+    }}
+    QCalendarWidget QToolButton {{
+        background: {NEON['bg_card']};
+        color: {NEON['text']};
+        border: 1px solid {NEON['border']};
+        border-radius: 4px;
+        padding: 4px 8px;
+        margin: 2px;
+        font-family: {_neon_font()};
+        font-size: 12px;
+    }}
+    QCalendarWidget QToolButton:hover {{
+        background: {NEON['bg_hover']};
+        border: 1px solid {NEON['border_hi']};
+    }}
+    QCalendarWidget QMenu {{
+        background: {NEON['bg_panel']};
+        color: {NEON['text']};
+        border: 1px solid {NEON['border']};
+    }}
+    QCalendarWidget QSpinBox {{
+        color: {NEON['text']};
+        background: {NEON['bg_card']};
+    }}
+    QCalendarWidget QAbstractItemView:enabled {{
+        background: {NEON['bg_panel']};
+        color: {NEON['text']};
+        selection-background-color: {NEON['cyan']};
+        selection-color: #FFFFFF;
+        gridline-color: {NEON['border']};
+    }}
+    QCalendarWidget QAbstractItemView:disabled {{
+        color: {NEON['text_muted']};
+    }}
+    QCalendarWidget QWidget#qt_calendar_navigationbar {{
+        background: {NEON['bg_panel']};
+        border-bottom: 1px solid {NEON['border']};
     }}
 
     /* Checkboxes — Linear's small square indicator, filled purple when on */
@@ -1804,10 +1874,21 @@ class RemindersTab(QWidget):
         self.title_input.returnPressed.connect(self._add)
         row.addWidget(self.title_input, 3)
 
-        self.when_input = QLineEdit()
-        self.when_input.setPlaceholderText("When?  e.g. tomorrow 09:00  |  in 2h  |  2026-07-25 14:30")
+        # Calendar-popup date/time picker. Defaults to tomorrow 09:00 —
+        # the most common reminder shape — but any user pick overrides.
+        from PySide6.QtCore import QTime
+        self.when_input = QDateTimeEdit()
+        self.when_input.setDisplayFormat("yyyy-MM-dd  HH:mm")
+        self.when_input.setCalendarPopup(True)
         self.when_input.setMinimumHeight(30)
-        self.when_input.returnPressed.connect(self._add)
+        tomorrow = QDate.currentDate().addDays(1)
+        self.when_input.setDateTime(QDateTime(tomorrow, QTime(9, 0)))
+        self.when_input.setMinimumDateTime(QDateTime.currentDateTime())
+        cal = self.when_input.calendarWidget()
+        if cal is not None:
+            cal.setGridVisible(True)
+            cal.setFirstDayOfWeek(Qt.Monday)
+            cal.setVerticalHeaderFormat(QCalendarWidget.NoVerticalHeader)
         row.addWidget(self.when_input, 3)
 
         self.add_btn = QPushButton("+ Add")
@@ -1821,8 +1902,7 @@ class RemindersTab(QWidget):
         hint = QLabel(
             f"<span style='color:{NEON['text_muted']}; font-size:11px'>"
             f"Fires 1 day before, 5 minutes before, and on time. "
-            f"Formats: <code>tomorrow HH:MM</code>, <code>today HH:MM</code>, "
-            f"<code>in Nm/Nh/Nd</code>, <code>YYYY-MM-DD HH:MM</code>."
+            f"Click the date box to open the calendar; click hours or minutes then use ↑/↓ to adjust."
             f"</span>"
         )
         hint.setWordWrap(True)
@@ -1831,7 +1911,7 @@ class RemindersTab(QWidget):
     def _build_table(self):
         self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(
-            ["ID", "Due", "Title", "Stages fired", ""]
+            ["ID", "Due", "Title", "Stages", "Actions"]
         )
         self.table.horizontalHeader().setSectionResizeMode(
             0, QHeaderView.ResizeToContents)
@@ -1841,32 +1921,37 @@ class RemindersTab(QWidget):
             2, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(
             3, QHeaderView.ResizeToContents)
+        # Actions column — Fixed width so the Done + Delete buttons never get
+        # clipped by ResizeToContents (which mis-measures cellWidget containers).
         self.table.horizontalHeader().setSectionResizeMode(
-            4, QHeaderView.ResizeToContents)
+            4, QHeaderView.Fixed)
+        self.table.setColumnWidth(4, 180)
+        # Row height needs to fit two 22px buttons + padding.
+        self.table.verticalHeader().setDefaultSectionSize(36)
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionMode(QTableWidget.NoSelection)
         self.layout.addWidget(self.table, 1)
 
     def _add(self):
         from .reminders import store as rstore
-        from .cli import _parse_due
+        from PySide6.QtCore import QTime
         title = self.title_input.text().strip()
-        when = self.when_input.text().strip()
         if not title:
             QMessageBox.warning(self, "Missing title", "Please write what to remind you about.")
             return
-        if not when:
-            QMessageBox.warning(self, "Missing time", "Please provide a due time (e.g. 'tomorrow 09:00').")
-            return
-        due = _parse_due(when)
-        if due is None:
-            QMessageBox.warning(self, "Bad time",
-                                 f"Couldn't parse {when!r}. Try 'tomorrow 09:00', "
-                                 f"'in 2h', or '2026-07-25 14:30'.")
+        qdt = self.when_input.dateTime()
+        due = qdt.toPython() if hasattr(qdt, "toPython") else datetime(
+            qdt.date().year(), qdt.date().month(), qdt.date().day(),
+            qdt.time().hour(), qdt.time().minute(),
+        )
+        if due <= datetime.now():
+            QMessageBox.warning(self, "Bad time", "Please pick a future date/time.")
             return
         rstore.add(title, due)
         self.title_input.clear()
-        self.when_input.clear()
+        # Reset picker to tomorrow 09:00 for the next add
+        tomorrow = QDate.currentDate().addDays(1)
+        self.when_input.setDateTime(QDateTime(tomorrow, QTime(9, 0)))
         self.refresh()
 
     def _done(self, reminder_id: int):
@@ -1897,14 +1982,21 @@ class RemindersTab(QWidget):
             self.table.setItem(
                 i, 3, QTableWidgetItem(",".join(r["fired_stages"]) or "-")
             )
-            # Action buttons in a container
+            # Action buttons — put inside a sized container so the cell
+            # widget actually gets rendered at full column width (Qt won't
+            # stretch it otherwise, and the buttons end up as invisible
+            # slivers clipped at the row edge).
             container = QWidget()
+            container.setMinimumHeight(30)
             row = QHBoxLayout(container)
-            row.setContentsMargins(0, 0, 0, 0)
-            row.setSpacing(4)
+            row.setContentsMargins(4, 2, 4, 2)
+            row.setSpacing(6)
             done = QPushButton("Done")
+            done.setObjectName("primary")
             done.setCursor(Qt.PointingHandCursor)
             done.setAutoDefault(False); done.setDefault(False)
+            done.setMinimumWidth(70)
+            done.setMinimumHeight(26)
             done.clicked.connect(
                 lambda _=False, rid=r["id"]: self._done(rid)
             )
@@ -1913,6 +2005,8 @@ class RemindersTab(QWidget):
             dele.setObjectName("danger")
             dele.setCursor(Qt.PointingHandCursor)
             dele.setAutoDefault(False); dele.setDefault(False)
+            dele.setMinimumWidth(70)
+            dele.setMinimumHeight(26)
             dele.clicked.connect(
                 lambda _=False, rid=r["id"]: self._delete(rid)
             )

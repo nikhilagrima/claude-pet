@@ -183,13 +183,16 @@ class RemindTabTests(unittest.TestCase):
     def test_add_via_inputs(self):
         from claude_pet.panel import RemindersTab
         from claude_pet.reminders import store
+        from PySide6.QtCore import QDateTime, QDate, QTime
         tab = RemindersTab()
         tab.title_input.setText("Call dentist")
-        tab.when_input.setText("tomorrow 10:00")
+        # Calendar picker: set to tomorrow 10:00
+        tomorrow = QDate.currentDate().addDays(1)
+        tab.when_input.setDateTime(QDateTime(tomorrow, QTime(10, 0)))
         tab._add()
         self.assertEqual(len(store.list_active()), 1)
         self.assertEqual(store.list_active()[0]["title"], "Call dentist")
-        # Inputs cleared
+        # Title cleared; picker reset to a fresh tomorrow default
         self.assertEqual(tab.title_input.text(), "")
 
     def test_done_button_marks_completed(self):
