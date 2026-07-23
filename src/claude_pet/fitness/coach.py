@@ -200,6 +200,152 @@ def write_suggestion(text: str) -> None:
     p.write_text(text.strip() + "\n")
 
 
+# --- SESSIONSTART FITNESS CONTEXT ------------------------------------------
+# Injected into EVERY Claude Code SessionStart (not just Sunday) so Claude
+# always sees the user's current fitness picture and can proactively suggest
+# make-up workouts, diet tweaks, and supplements — using WebSearch if the
+# user is off-track. Kept compact (<400 tokens typical) so it doesn't crowd
+# out the memory-graph context above it.
+#
+# The ask is conditional:
+#   - "Please suggest ..." only fires when there's an actual gap (missing
+#     body parts, weight trend stalled, or user asks). Otherwise the block
+#     is data-only and Claude Code does not need to write anything.
+
+def _weight_trend_note(weights: list[dict]) -> Optional[str]:
+    """Look at 7-day weight change. Return a short note or None."""
+    if len(weights) < 2:
+        return None
+    latest = weights[0]         # tracker.recent returns newest-first
+    week_ago = None
+    latest_day = date.fromisoformat(latest["day"])
+    from datetime import timedelta
+    for w in weights[1:]:
+        gap = (latest_day - date.fromisoformat(w["day"])).days
+        if gap >= 6:
+            week_ago = w
+            break
+    if week_ago is None:
+        week_ago = weights[-1]
+    delta = latest["weight_kg"] - week_ago["weight_kg"]
+    if abs(delta) < 0.1:
+        return f"weight flat ({latest['weight_kg']}kg, no change in ~7 days)"
+    dir_word = "down" if delta < 0 else "up"
+    return (f"weight {dir_word} {abs(delta):.1f} kg in ~7 days "
+            f"({week_ago['weight_kg']} → {latest['weight_kg']})")
+
+
+def build_fitness_session_context(today: Optional[date] = None) -> Optional[str]:
+    """Return the fitness block injected into Claude Code's SessionStart, or
+    None when there's no useful signal to share (fresh install, no data).
+
+    The block always contains data. It only contains an *ask* when there's
+    a gap Claude Code can help close: missing body parts this week, or a
+    stalled weight trend against the user's target. When there's no gap,
+    Claude Code sees the data and can still comment if the user asks, but
+    isn't nagged to write a suggestions file every session.
+    """
+    today = today or date.today()
+    prof = fcfg.profile()
+    weight_kg = float(prof.get("weight_kg", 0) or 0)
+    target_kg = float(prof.get("target_weight_kg", 0) or 0)
+    if weight_kg <= 0:
+        return None                            # user hasn't set up profile yet
+
+    targets = fplan.daily_targets(
+        weight_kg=weight_kg,
+        height_cm=float(prof.get("height_cm", 175)),
+        age=int(prof.get("age", 30)),
+        male=bool(prof.get("male", True)),
+        activity_factor=float(prof.get("activity_factor", 1.375)),
+    )
+    cov = week_coverage(today)
+    recent = tracker.recent(days=14)
+    trend = _weight_trend_note(recent["weights"])
+    gap = bool(cov["focuses_missed"]) or bool(cov["missing"])
+    stalled = bool(trend and "flat" in trend and weight_kg > target_kg)
+
+    lines = [""]
+    lines.append("## Fitness snapshot — Claude, keep this in mind")
+    lines.append(f"Goal: {weight_kg} kg → target {target_kg} kg  ·  "
+                 f"daily {targets.target_kcal} kcal / "
+                 f"{targets.protein_g} g protein / {targets.steps} steps")
+    if trend:
+        lines.append(f"Trend: {trend}")
+    lines.append(f"This week ({cov['week']}, {cov['monday']}→{cov['sunday']}): "
+                 f"{cov['workouts_completed']} workouts done, "
+                 f"{cov['days_remaining']} day(s) left")
+    if cov["focuses_hit"]:
+        lines.append(f"Focuses hit: {', '.join(cov['focuses_hit'])}")
+    if cov["focuses_missed"]:
+        lines.append(f"Focuses MISSED so far: {', '.join(cov['focuses_missed'])}")
+    if cov["missing"]:
+        lines.append(f"Body parts still needing work: "
+                     f"{', '.join(cov['missing'][:8])}"
+                     + ("…" if len(cov["missing"]) > 8 else ""))
+    for note in carry_forward_notes(today):
+        lines.append(f"↪ {note}")
+
+    if gap or stalled:
+        lines.append("")
+        lines.append(
+            "Please help me hit my fitness goal. Use WebSearch to research "
+            "current, evidence-based recommendations, then write a plain-text "
+            "reply (≤120 words, no markdown) to "
+            "~/.claude/claude-pet/fitness_suggestions.txt covering:"
+        )
+        if cov["focuses_missed"]:
+            lines.append(
+                "  · one specific make-up workout for each missed focus "
+                f"({', '.join(cov['focuses_missed'])}) I can do in the "
+                f"remaining {cov['days_remaining']} day(s) — or, if the "
+                "week is over, note it will roll to next week"
+            )
+        if stalled:
+            lines.append("  · one diet tweak that fits Indian/Kerala food "
+                         "(my weight has stalled — see FOOD_PRINCIPLES in "
+                         "the plan)")
+        lines.append("  · at most 2 supplements worth considering "
+                     "(food-first; note doses only; flag any interactions)")
+        lines.append(
+            "You can also run: `claude-pet fitness suggest \"<your text>\"` "
+            "and the pet will show the note in a bubble."
+        )
+    return "\n".join(lines)
+
+
+# --- BODY-PART GAP REMINDER -------------------------------------------------
+# Mid-week (Wednesday) and end-of-week (Sunday), if any MUST_HIT_FOCUSES are
+# still un-done, the pet fires a note-bubble. Uses the existing note-shown
+# tracking so it fires at most once per (day, gap-fingerprint).
+
+def body_part_gap_pending(today: Optional[date] = None) -> Optional[str]:
+    """Return the reminder text if a gap alert should fire today, else None.
+
+    Fires on Wed (weekday 2) or Sun (weekday 6). Only if there's at least
+    one missed focus in MUST_HIT_FOCUSES. Dedupe key = (date + focuses),
+    stored in the config under `_gap_alert_fingerprint`.
+    """
+    today = today or date.today()
+    if today.weekday() not in (2, 6):
+        return None
+    cov = week_coverage(today)
+    if not cov["focuses_missed"]:
+        return None
+    fingerprint = f"{today.isoformat()}|{','.join(cov['focuses_missed'])}"
+    cfg = fcfg.load()
+    if str(cfg.get("_gap_alert_fingerprint") or "") == fingerprint:
+        return None
+    cfg["_gap_alert_fingerprint"] = fingerprint
+    fcfg.save(cfg)
+    days_left = cov["days_remaining"]
+    if days_left > 0:
+        return (f"Body-part gap: {', '.join(cov['focuses_missed'])} not done "
+                f"yet — {days_left} day(s) left this week to fit them in.")
+    return (f"Body-part gap: {', '.join(cov['focuses_missed'])} missed this "
+            f"week — will carry to next week's plan.")
+
+
 def weekly_adjustment_pending() -> bool:
     """True iff (a) agentic coach enabled AND (b) today is Sunday (weekday 6)
     AND (c) no note has been generated for the current ISO week."""

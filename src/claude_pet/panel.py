@@ -2031,6 +2031,7 @@ class FitnessTab(QWidget):
         self._build_today_row()
         self._build_goal_row()
         self._build_progress_row()
+        self._build_coverage_row()
         self._build_recent_tables()
         self._build_action_row()
         self.layout.addStretch(1)
@@ -2084,6 +2085,58 @@ class FitnessTab(QWidget):
         self.progress_label.setTextFormat(Qt.RichText)
         self.progress_label.setWordWrap(True)
         self.layout.addWidget(self.progress_label)
+
+    def _build_coverage_row(self):
+        """Body-part coverage grid — one chip per body part, green when
+        trained this ISO week, dim when still missing. Plus the carry-forward
+        note strip so the user sees at a glance what to make up."""
+        self.layout.addWidget(self._header("THIS WEEK · BODY-PART COVERAGE"))
+        self.coverage_container = QWidget()
+        self.coverage_layout = QHBoxLayout(self.coverage_container)
+        self.coverage_layout.setContentsMargins(0, 0, 0, 0)
+        self.coverage_layout.setSpacing(6)
+        self.coverage_layout.addStretch(1)
+        self.layout.addWidget(self.coverage_container)
+
+        self.coverage_notes = QLabel()
+        self.coverage_notes.setTextFormat(Qt.RichText)
+        self.coverage_notes.setWordWrap(True)
+        self.layout.addWidget(self.coverage_notes)
+
+    def _rebuild_coverage_chips(self, trained: set, missing_focuses: list):
+        from .fitness import plan as fplan
+        # Clear the previous chip row (keep the trailing stretch item)
+        while self.coverage_layout.count() > 1:
+            item = self.coverage_layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        # Build one chip per known body part
+        for bp in fplan.ALL_BODY_PARTS:
+            hit = bp in trained
+            chip = QLabel(bp)
+            chip.setAlignment(Qt.AlignCenter)
+            chip.setMinimumHeight(24)
+            if hit:
+                chip.setStyleSheet(
+                    f"background: {NEON['cyan']};"
+                    f"color: #FFFFFF;"
+                    f"border-radius: 12px;"
+                    f"padding: 3px 10px;"
+                    f"font-size: 11px; font-weight: 600;"
+                )
+            else:
+                chip.setStyleSheet(
+                    f"background: {NEON['bg_card']};"
+                    f"color: {NEON['text_muted']};"
+                    f"border: 1px solid {NEON['border']};"
+                    f"border-radius: 12px;"
+                    f"padding: 3px 10px;"
+                    f"font-size: 11px;"
+                )
+            self.coverage_layout.insertWidget(
+                self.coverage_layout.count() - 1, chip
+            )
 
     def _build_recent_tables(self):
         # Weight trend — last 14 days table.
@@ -2262,6 +2315,37 @@ class FitnessTab(QWidget):
                 self.meal_table.setItem(
                     i, 1, QTableWidgetItem("✓ on plan" if m["on_plan"] else "off plan")
                 )
+
+            # Body-part coverage grid + carry-forward notes
+            from .fitness import coach as fcoach
+            cov = fcoach.week_coverage()
+            self._rebuild_coverage_chips(
+                set(cov["trained"]), cov["focuses_missed"]
+            )
+            note_lines = []
+            if cov["focuses_hit"]:
+                note_lines.append(
+                    f"<span style='color:{NEON['text_dim']}'>hit: </span>"
+                    f"<span style='color:{NEON['text']}'>"
+                    f"{', '.join(cov['focuses_hit'])}</span>"
+                )
+            if cov["focuses_missed"]:
+                note_lines.append(
+                    f"<span style='color:{NEON['text_dim']}'>missing: </span>"
+                    f"<span style='color:#E5484D'>"
+                    f"{', '.join(cov['focuses_missed'])}</span>"
+                )
+            for n in fcoach.carry_forward_notes():
+                note_lines.append(
+                    f"<span style='color:{NEON['cyan']}'>↪</span> "
+                    f"<span style='color:{NEON['text_dim']}'>"
+                    f"{_escape_html(n)}</span>"
+                )
+            self.coverage_notes.setText(
+                " &nbsp;·&nbsp; ".join(note_lines) if note_lines else
+                f"<span style='color:{NEON['text_muted']}'>"
+                f"No workouts yet this week.</span>"
+            )
         finally:
             self._ready = True
 

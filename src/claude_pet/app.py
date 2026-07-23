@@ -726,6 +726,38 @@ class PetWindow(QWidget):
                     bubble.show()
                     return       # don't stack a reminder on top
 
+            # Next: Claude Code suggestions (WebSearch-based exercise / diet /
+            # supplement advice). Same one-shot semantics as the coaching note.
+            if fcoach.suggestions_need_showing():
+                sug = fcoach.latest_suggestions()
+                if sug:
+                    bubble = foverlay.CoachNoteBubble(
+                        sug, on_close=fcoach.mark_suggestions_shown,
+                    )
+                    self._active_fitness_bubbles = getattr(
+                        self, "_active_fitness_bubbles", []
+                    )
+                    self._active_fitness_bubbles = [
+                        b for b in self._active_fitness_bubbles if b.isVisible()
+                    ]
+                    self._active_fitness_bubbles.append(bubble)
+                    bubble.show()
+                    return
+
+            # Body-part gap alert (Wed / Sun, once per gap-fingerprint)
+            gap_msg = fcoach.body_part_gap_pending()
+            if gap_msg:
+                bubble = foverlay.CoachNoteBubble(gap_msg, on_close=lambda: None)
+                self._active_fitness_bubbles = getattr(
+                    self, "_active_fitness_bubbles", []
+                )
+                self._active_fitness_bubbles = [
+                    b for b in self._active_fitness_bubbles if b.isVisible()
+                ]
+                self._active_fitness_bubbles.append(bubble)
+                bubble.show()
+                return
+
             # Then the scheduled reminders
             due = fsched.check_due()
             if not due:

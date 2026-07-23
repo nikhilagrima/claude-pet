@@ -211,5 +211,82 @@ class FitnessNoteTests(unittest.TestCase):
         self.assertLess(len(text), 2000, "keep the injection compact")
 
 
+class BodyPartCoverageTests(unittest.TestCase):
+    """Covers plan.coverage_from_workouts + coach.week_coverage/
+    carry_forward_notes/body_part_gap_pending — the fitness bridge core."""
+
+    def test_body_parts_for_focus_case_insensitive(self):
+        from claude_pet.fitness import plan
+        self.assertEqual(
+            plan.body_parts_for_focus("push"),
+            ("chest", "shoulders", "triceps"),
+        )
+        self.assertEqual(plan.body_parts_for_focus("REST"), ())
+        self.assertEqual(plan.body_parts_for_focus("bogus"), ())
+
+    def test_coverage_from_workouts_hits_and_misses(self):
+        from claude_pet.fitness import plan
+        cov = plan.coverage_from_workouts([
+            {"focus": "PUSH", "completed": True},
+            {"focus": "LEGS", "completed": True},
+            {"focus": "PULL", "completed": False},   # skipped — doesn't count
+        ])
+        self.assertTrue({"chest", "quads"}.issubset(cov["trained"]))
+        self.assertIn("back", cov["missing"])    # PULL was skipped
+        self.assertTrue(cov["per_focus"]["PUSH"])
+        self.assertFalse(cov["per_focus"]["PULL"])
+
+    def test_week_coverage_returns_expected_keys(self):
+        from claude_pet.fitness import coach
+        cov = coach.week_coverage()
+        for key in ("week", "monday", "sunday", "workouts_completed",
+                    "workouts_skipped", "trained", "missing",
+                    "focuses_hit", "focuses_missed", "days_remaining"):
+            self.assertIn(key, cov)
+        self.assertRegex(cov["week"], r"^\d{4}-W\d{2}$")
+
+    def test_carry_forward_notes_returns_list(self):
+        from claude_pet.fitness import coach
+        notes = coach.carry_forward_notes()
+        self.assertIsInstance(notes, list)
+
+    def test_build_fitness_session_context_none_when_no_profile(self):
+        """Without a profile weight, we return None (nothing useful to say)."""
+        from claude_pet.fitness import coach, config as fcfg
+        with mock.patch.object(fcfg, "profile", return_value={"weight_kg": 0}):
+            self.assertIsNone(coach.build_fitness_session_context())
+
+    def test_body_part_gap_pending_only_wed_or_sun(self):
+        """Non-Wed/Sun days always return None regardless of gap."""
+        from claude_pet.fitness import coach
+        from datetime import date
+        # Monday of any week
+        monday = date(2026, 7, 20)
+        self.assertIsNone(coach.body_part_gap_pending(monday))
+
+
+class SuggestionsBridgeTests(unittest.TestCase):
+    def test_write_and_read_suggestion(self):
+        from claude_pet.fitness import coach, config as fcfg
+        cfg_path, db_path, note_path = _isolate()
+        sug_path = cfg_path.parent / "fitness_suggestions.txt"
+        with mock.patch.object(fcfg, "_config_path", return_value=cfg_path), \
+             mock.patch.object(coach, "_suggestions_path", return_value=sug_path):
+            self.assertIsNone(coach.latest_suggestions())
+            coach.write_suggestion("Try incline dumbbell press for chest")
+            self.assertIn("incline", coach.latest_suggestions())
+
+    def test_suggestions_shown_once_cycle(self):
+        from claude_pet.fitness import coach, config as fcfg
+        cfg_path, db_path, note_path = _isolate()
+        sug_path = cfg_path.parent / "fitness_suggestions.txt"
+        with mock.patch.object(fcfg, "_config_path", return_value=cfg_path), \
+             mock.patch.object(coach, "_suggestions_path", return_value=sug_path):
+            coach.write_suggestion("advice v1")
+            self.assertTrue(coach.suggestions_need_showing())
+            coach.mark_suggestions_shown()
+            self.assertFalse(coach.suggestions_need_showing())
+
+
 if __name__ == "__main__":
     unittest.main()

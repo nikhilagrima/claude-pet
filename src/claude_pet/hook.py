@@ -127,9 +127,16 @@ def _emit_session_context(project_path: str) -> None:
         # Additive: never required for the pet's core memory work.
         try:
             from .fitness import coach as fcoach
+            # 1. Weekly adjustment note (Sundays only, once per ISO week)
             if fcoach.weekly_adjustment_pending():
                 block = (block or "") + "\n\n" + fcoach.build_weekly_adjustment_context()
                 fcoach.mark_week_note_generated()
+            # 2. Every-session fitness snapshot + gap-aware ask (data-only
+            # when the user is on-track; asks Claude Code to WebSearch and
+            # write suggestions when body parts are missed or trend stalled).
+            fitness_ctx = fcoach.build_fitness_session_context()
+            if fitness_ctx:
+                block = (block or "") + "\n" + fitness_ctx
         except Exception:
             log_exception("hook.fitness_bridge")
         if not block or not block.strip():

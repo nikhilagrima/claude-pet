@@ -808,6 +808,49 @@ def cmd_fitness(args):
                   "One is generated on Sunday via Claude Code (see docs).")
         return 0
 
+    if sub == "suggest":
+        # Claude Code writes exercise/diet/supplement advice into the pet's
+        # suggestions file. Pet's tick loop picks it up and shows a bubble.
+        # Also readable from stdin so Claude can pipe long payloads without
+        # shell-quoting hell.
+        text = " ".join(a).strip()
+        if not text and not sys.stdin.isatty():
+            text = sys.stdin.read().strip()
+        if not text:
+            print('usage: claude-pet fitness suggest "your advice text"',
+                  file=sys.stderr)
+            print("       (or pipe the text on stdin)", file=sys.stderr)
+            return 2
+        fcoach.write_suggestion(text)
+        print(f"[claude-pet] suggestion saved "
+              f"({len(text)} chars). Pet will show it next tick.")
+        return 0
+
+    if sub == "coverage":
+        # Human-readable body-part coverage for this week — mirrors the
+        # SessionStart injection so the user can see what Claude sees.
+        cov = fcoach.week_coverage()
+        print(f"=== week {cov['week']}  ({cov['monday']} → {cov['sunday']}) ===")
+        print(f"workouts completed : {cov['workouts_completed']}")
+        print(f"days remaining     : {cov['days_remaining']}")
+        print(f"focuses hit        : {', '.join(cov['focuses_hit']) or '—'}")
+        print(f"focuses missed     : {', '.join(cov['focuses_missed']) or '—'}")
+        print(f"body parts trained : {', '.join(cov['trained']) or '—'}")
+        print(f"body parts missing : {', '.join(cov['missing']) or '—'}")
+        for n in fcoach.carry_forward_notes():
+            print(f"  ↪ {n}")
+        return 0
+
+    if sub == "session-context":
+        # Prints what the SessionStart hook would inject — for debugging.
+        ctx = fcoach.build_fitness_session_context()
+        if ctx:
+            print(ctx)
+        else:
+            print("[claude-pet] no fitness context yet "
+                  "(set profile weight in the FITNESS tab first).")
+        return 0
+
     print(f"unknown fitness subcommand: {sub}", file=sys.stderr)
     return 1
 
@@ -1180,13 +1223,19 @@ def main():
 
     fit_p = sub.add_parser(
         "fitness",
-        help="fitness coach: plan | targets | log-weight | log-workout | log-meal | recent | note",
+        help="fitness coach: plan | targets | log-* | recent | note | "
+             "coverage | suggest | session-context",
     )
     fit_p.add_argument("fit_sub", nargs="?", default="plan",
                        choices=["plan", "targets", "log-weight", "log-workout",
-                                "log-meal", "recent", "note", "on", "off"])
+                                "log-meal", "recent", "note", "on", "off",
+                                "suggest", "coverage", "session-context"])
     fit_p.add_argument("fit_args", nargs="*", default=[],
-                       help="args for log-*: 'log-weight 79.2' | 'log-workout done|skip' | 'log-meal on|off [note]'")
+                       help="args for log-*/suggest: "
+                            "'log-weight 79.2' | 'log-workout done|skip' | "
+                            "'log-meal on|off [note]' | "
+                            "'suggest \"advice text\"' (Claude Code writes this "
+                            "and the pet displays it once)")
 
     rem_p = sub.add_parser(
         "remind",
