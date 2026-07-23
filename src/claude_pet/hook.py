@@ -120,6 +120,18 @@ def _emit_session_context(project_path: str) -> None:
     from .errors import log_exception
     try:
         block = ctx.build_context(project_path)
+        # Fitness bridge — if a weekly adjustment is pending (Sunday, no
+        # note yet for this ISO week), append a compact ask so Claude Code
+        # writes the note to ~/.claude/claude-pet/fitness_note.txt. The
+        # pet's fitness overlay picks it up next tick and shows it once.
+        # Additive: never required for the pet's core memory work.
+        try:
+            from .fitness import coach as fcoach
+            if fcoach.weekly_adjustment_pending():
+                block = (block or "") + "\n\n" + fcoach.build_weekly_adjustment_context()
+                fcoach.mark_week_note_generated()
+        except Exception:
+            log_exception("hook.fitness_bridge")
         if not block or not block.strip():
             return
         payload = {

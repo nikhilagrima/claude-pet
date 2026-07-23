@@ -632,6 +632,88 @@ class PetWindow(QWidget):
         if self.frame_idx % 30 == 0:
             self._drain_visibility_queue()
 
+        # Fitness scheduler — same cadence. Fires at most one reminder per
+        # tick (per day); scheduler.check_due returns "workout" | "weigh_in"
+        # | "meal_check" | None. Kept behind a config-enabled guard so the
+        # module is invisible until the user turns it on.
+        if self.frame_idx % 30 == 0:
+            self._drain_fitness_scheduler()
+
+    def _drain_fitness_scheduler(self):
+        """Show at most one fitness bubble per tick — workout / weigh-in /
+        meal-check based on time-of-day. Also displays the weekly coaching
+        note if Claude Code wrote one since last shown."""
+        try:
+            from .fitness import scheduler as fsched
+            from .fitness import config as fcfg
+            from .fitness import coach as fcoach
+            from .fitness import tracker as ftrack
+            from .fitness import overlay as foverlay
+            from .fitness import plan as fplan
+
+            # First check: is a coaching note waiting to be shown once?
+            if fcoach.note_needs_showing():
+                note = fcoach.latest_note()
+                if note:
+                    bubble = foverlay.CoachNoteBubble(
+                        note, on_close=fcoach.mark_note_shown,
+                    )
+                    self._active_fitness_bubbles = getattr(
+                        self, "_active_fitness_bubbles", []
+                    )
+                    self._active_fitness_bubbles = [
+                        b for b in self._active_fitness_bubbles if b.isVisible()
+                    ]
+                    self._active_fitness_bubbles.append(bubble)
+                    bubble.show()
+                    return       # don't stack a reminder on top
+
+            # Then the scheduled reminders
+            due = fsched.check_due()
+            if not due:
+                return
+
+            self._active_fitness_bubbles = getattr(
+                self, "_active_fitness_bubbles", []
+            )
+            self._active_fitness_bubbles = [
+                b for b in self._active_fitness_bubbles if b.isVisible()
+            ]
+
+            if due == "workout":
+                bubble = foverlay.WorkoutBubble(
+                    fcoach.daily_nudge(),
+                    on_close=lambda: fsched.mark_fired("workout"),
+                )
+            elif due == "weigh_in":
+                current = ftrack.latest_weight() or float(
+                    fcfg.profile().get("weight_kg", 80)
+                )
+                bubble = foverlay.WeighInBubble(
+                    current_kg=current,
+                    on_submit=lambda kg: (
+                        ftrack.log_weight(kg),
+                        fsched.mark_fired("weigh_in"),
+                    ),
+                    on_dismiss=lambda: fsched.mark_fired("weigh_in"),
+                )
+            elif due == "meal_check":
+                bubble = foverlay.MealCheckBubble(
+                    on_submit=lambda on_plan, note: (
+                        ftrack.log_meal(on_plan, note),
+                        fsched.mark_fired("meal_check"),
+                    ),
+                    on_dismiss=lambda: fsched.mark_fired("meal_check"),
+                )
+            else:
+                return
+
+            self._active_fitness_bubbles.append(bubble)
+            bubble.show()
+        except Exception:
+            from .errors import log_exception
+            log_exception("app._drain_fitness_scheduler")
+
     def _drain_visibility_queue(self):
         """Check /visibility for a CLI-triggered show/hide and apply it."""
         try:

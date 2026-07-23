@@ -591,6 +591,118 @@ def cmd_mute(args):
     return 0
 
 
+def cmd_fitness(args):
+    """`claude-pet fitness <sub> [...]` — coach + tracker CLI surface.
+
+    Subcommands:
+      plan               — today's workout, cardio, targets
+      targets            — kcal/protein/step for the day, from profile
+      log-weight <kg>    — log today's weigh-in (overwrites the day's row)
+      log-workout done|skip — mark today's workout done or skipped
+      log-meal on|off [note] — mark whether meals were on plan today
+      recent [days]      — last 14 days of tracked data (default)
+      note               — show latest weekly coaching note if any
+      on / off           — enable / disable the fitness module
+    """
+    from .fitness import plan as fplan
+    from .fitness import config as fcfg
+    from .fitness import coach as fcoach
+    from .fitness import tracker as ftrack
+    sub = getattr(args, "fit_sub", "plan") or "plan"
+    a = getattr(args, "fit_args", []) or []
+
+    if sub == "on":
+        cfg = fcfg.load(); cfg["enabled"] = True; fcfg.save(cfg)
+        print("[claude-pet] fitness coach: ON")
+        return 0
+    if sub == "off":
+        cfg = fcfg.load(); cfg["enabled"] = False; fcfg.save(cfg)
+        print("[claude-pet] fitness coach: OFF")
+        return 0
+
+    if sub == "plan":
+        print(fcoach.daily_nudge())
+        return 0
+
+    if sub == "targets":
+        prof = fcfg.profile()
+        t = fplan.daily_targets(
+            weight_kg=float(prof.get("weight_kg", 80)),
+            height_cm=float(prof.get("height_cm", 175)),
+            age=int(prof.get("age", 30)),
+            male=bool(prof.get("male", True)),
+            activity_factor=float(prof.get("activity_factor", 1.375)),
+        )
+        print(f"maintenance   : {t.maintenance_kcal:,} kcal")
+        print(f"target (loss) : {t.target_kcal:,} kcal  (deficit 500)")
+        print(f"protein       : {t.protein_g} g  (1.8 × body kg)")
+        print(f"steps         : {t.steps:,}")
+        return 0
+
+    if sub == "log-weight":
+        if not a:
+            print("usage: claude-pet fitness log-weight <kg>", file=sys.stderr)
+            return 2
+        try:
+            kg = float(a[0])
+        except ValueError:
+            print(f"[claude-pet] bad weight: {a[0]!r}", file=sys.stderr)
+            return 2
+        ftrack.log_weight(kg)
+        print(f"[claude-pet] logged weight: {kg} kg for today")
+        return 0
+
+    if sub == "log-workout":
+        state = (a[0] if a else "done").lower()
+        completed = state not in ("skip", "skipped", "no", "off")
+        from datetime import datetime
+        day = fplan.day_plan_for(datetime.now().weekday())
+        ftrack.log_workout(day.focus, completed=completed)
+        print(f"[claude-pet] logged workout: {day.focus} "
+              f"({'done' if completed else 'skipped'})")
+        return 0
+
+    if sub == "log-meal":
+        if not a:
+            print("usage: claude-pet fitness log-meal on|off [note]", file=sys.stderr)
+            return 2
+        on_plan = a[0].lower() in ("on", "yes", "y", "true", "1", "on-plan")
+        note = " ".join(a[1:]).strip()
+        ftrack.log_meal(on_plan, note)
+        print(f"[claude-pet] logged meal: {'on plan' if on_plan else 'off plan'}"
+              + (f" — {note}" if note else ""))
+        return 0
+
+    if sub == "recent":
+        days = int(a[0]) if a and a[0].isdigit() else 14
+        r = ftrack.recent(days=days)
+        print(f"=== last {days} days ===")
+        print(f"weights ({len(r['weights'])}):")
+        for w in r["weights"][:10]:
+            print(f"  {w['day']}  {w['weight_kg']} kg")
+        print(f"workouts ({len(r['workouts'])}):")
+        for w in r["workouts"][:10]:
+            print(f"  {w['day']}  {w['focus']:<10} "
+                  f"{'done' if w['completed'] else 'skipped'}")
+        print(f"meals ({len(r['meals'])}):")
+        for m in r["meals"][:10]:
+            note = f" — {m['note']}" if m["note"] else ""
+            print(f"  {m['day']}  {'on plan' if m['on_plan'] else 'off plan'}{note}")
+        return 0
+
+    if sub == "note":
+        n = fcoach.latest_note()
+        if n:
+            print(n)
+        else:
+            print("[claude-pet] no weekly coaching note yet. "
+                  "One is generated on Sunday via Claude Code (see docs).")
+        return 0
+
+    print(f"unknown fitness subcommand: {sub}", file=sys.stderr)
+    return 1
+
+
 def cmd_visibility(args):
     """`claude-pet hide|show|toggle-visibility` — control mascot visibility.
 
@@ -957,6 +1069,16 @@ def main():
     sub.add_parser("toggle-visibility",
                     help="toggle mascot visibility (show <-> hide)")
 
+    fit_p = sub.add_parser(
+        "fitness",
+        help="fitness coach: plan | targets | log-weight | log-workout | log-meal | recent | note",
+    )
+    fit_p.add_argument("fit_sub", nargs="?", default="plan",
+                       choices=["plan", "targets", "log-weight", "log-workout",
+                                "log-meal", "recent", "note", "on", "off"])
+    fit_p.add_argument("fit_args", nargs="*", default=[],
+                       help="args for log-*: 'log-weight 79.2' | 'log-workout done|skip' | 'log-meal on|off [note]'")
+
     update_p = sub.add_parser("update", help="pull latest release from GitHub, reinstall, restart")
     update_p.add_argument("--force", action="store_true",
                           help="reinstall even if already on latest version")
@@ -1051,6 +1173,8 @@ def main():
         return cmd_mute(args)
     if args.cmd in ("hide", "show", "toggle-visibility"):
         return cmd_visibility(args)
+    if args.cmd == "fitness":
+        return cmd_fitness(args)
     return 0
 
 
