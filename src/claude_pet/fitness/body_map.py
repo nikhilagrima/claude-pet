@@ -242,6 +242,12 @@ class BodyMapWidget(QGraphicsView):
     # --- construction helpers ---------------------------------------------
 
     def _add_decoration(self) -> None:
+        """Draw the human-silhouette scaffold BEHIND the clickable parts.
+
+        Renders a proper front + back outline (head + neck + torso taper
+        + limbs) so the muscle-group shapes read as one figure, not a
+        pile of floating rectangles. Non-interactive: zValue < 0.
+        """
         # Section headers
         for txt, x in (("FRONT", 100), ("BACK", 300)):
             t = QGraphicsSimpleTextItem(txt)
@@ -252,13 +258,62 @@ class BodyMapWidget(QGraphicsView):
             br = t.boundingRect()
             t.setPos(x - br.width() / 2, 8)
             self._scene.addItem(t)
-        # Heads (non-interactive)
-        head_pen = QPen(_BORDER, 1.2)
+
+        # Silhouette fill + stroke — sits BEHIND the muscle-group shapes.
+        # Slightly darker than the panel bg to define the body shape.
+        silhouette_brush = QBrush(QColor("#1C1C22"))
+        silhouette_pen = QPen(_BORDER, 1.2)
+
         for cx in (100, 300):
+            # Head (smaller, proportional to body)
             head = self._scene.addEllipse(
-                cx - 22, 42, 44, 52, head_pen, QBrush(_GREY)
+                cx - 18, 38, 36, 44, silhouette_pen, silhouette_brush
             )
-            head.setZValue(-1)
+            head.setZValue(-2)
+            # Neck (short bar between head and torso)
+            neck = self._scene.addRect(
+                cx - 8, 82, 16, 12, silhouette_pen, silhouette_brush
+            )
+            neck.setZValue(-2)
+            # Torso outline — a rounded trapezoid from shoulders to hips.
+            # Wider at the top (shoulders 66px) than at the waist (48px)
+            # then a slight flare at the hips. Uses a QPainterPath so we
+            # get proper curves.
+            torso = QPainterPath()
+            torso.moveTo(cx - 34, 100)               # top-left shoulder
+            torso.quadTo(cx - 40, 140, cx - 30, 172) # taper into waist
+            torso.lineTo(cx - 34, 214)               # hip
+            torso.quadTo(cx, 224, cx + 34, 214)      # curve across hips
+            torso.lineTo(cx + 30, 172)               # taper up right side
+            torso.quadTo(cx + 40, 140, cx + 34, 100) # up to right shoulder
+            torso.quadTo(cx, 92, cx - 34, 100)       # collarbone curve
+            torso.closeSubpath()
+            torso_item = self._scene.addPath(torso, silhouette_pen, silhouette_brush)
+            torso_item.setZValue(-2)
+
+            # Arms — thin outlined pill shapes down each side
+            for side in (-1, 1):
+                arm = QPainterPath()
+                ax = cx + side * 48
+                arm.moveTo(ax - 10, 108)
+                arm.quadTo(ax - 14, 150, ax - 8, 200)   # outer arm curve
+                arm.lineTo(ax + 8, 210)                  # wrist bottom
+                arm.quadTo(ax + 14, 150, ax + 10, 108)  # inner arm back up
+                arm.closeSubpath()
+                a = self._scene.addPath(arm, silhouette_pen, silhouette_brush)
+                a.setZValue(-2)
+
+            # Legs — two pill shapes from hip down to ankle
+            for side in (-1, 1):
+                leg = QPainterPath()
+                lx = cx + side * 15
+                leg.moveTo(lx - 15, 214)
+                leg.quadTo(lx - 18, 320, lx - 12, 412)
+                leg.lineTo(lx + 12, 412)
+                leg.quadTo(lx + 18, 320, lx + 15, 214)
+                leg.closeSubpath()
+                l = self._scene.addPath(leg, silhouette_pen, silhouette_brush)
+                l.setZValue(-2)
 
     def _add_label(self, text: str, pos: tuple[float, float]) -> None:
         t = QGraphicsSimpleTextItem(text)

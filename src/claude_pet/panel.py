@@ -2145,6 +2145,7 @@ class FitnessTab(QWidget):
         self._build_today_row()
         self._build_goal_row()
         self._build_progress_row()
+        self._build_weight_chart_row()
         self._build_body_map_row()
         self._build_coverage_row()
         self._build_recent_tables()
@@ -2231,6 +2232,16 @@ class FitnessTab(QWidget):
         self.progress_label.setTextFormat(Qt.RichText)
         self.progress_label.setWordWrap(True)
         self.layout.addWidget(self.progress_label)
+
+    def _build_weight_chart_row(self):
+        """Line chart of last 30 days of weight logs, with a dashed
+        horizontal reference at target_weight_kg. Refreshes whenever the
+        tab refreshes (which happens after any log-weight action)."""
+        self.layout.addWidget(self._header("WEIGHT · LAST 30 DAYS"))
+        from .fitness.weight_chart import WeightChart
+        self.weight_chart = WeightChart(days=30)
+        self.weight_chart.setMinimumHeight(200)
+        self.layout.addWidget(self.weight_chart)
 
     def _build_body_map_row(self):
         """Clickable human-body map: green=trained this week, red=carried
@@ -2482,6 +2493,10 @@ class FitnessTab(QWidget):
                 self.meal_table.setItem(
                     i, 1, QTableWidgetItem("✓ on plan" if m["on_plan"] else "off plan")
                 )
+
+            # Weight line chart
+            if hasattr(self, "weight_chart"):
+                self.weight_chart.refresh()
 
             # Body map (green/red/grey per part)
             if hasattr(self, "body_map"):
